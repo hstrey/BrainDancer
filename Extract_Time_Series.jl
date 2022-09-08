@@ -18,13 +18,11 @@ end
 begin
 	using Plots,NIfTI,CSV, Colors, Images, Measures
 	using DataFrames
+	using Statistics
 end
 
 # ╔═╡ 6704f270-9d91-4d63-bf53-16e29c246605
 phantom = niread("/Users/hstrey/Desktop/Phantom_talk/Phantom dataset/epi/epi_corrected.nii")
-
-# ╔═╡ 00ad0f9e-ad79-40b6-b0ee-74c46827e62a
-gr(display_type=:inline)
 
 # ╔═╡ 2c3bcfa6-1607-42cd-8ba3-53cf2f19c3fc
 vsize = voxel_size(phantom.header)    # In mm
@@ -33,7 +31,7 @@ vsize = voxel_size(phantom.header)    # In mm
 Red(x) = RGB(x,0,0)
 
 # ╔═╡ 462eed79-97b3-441a-ac9a-c70616acb166
-plot(Gray.(phantom[:,:,10,1] ./ findmax(phantom[:,:,10,1])[1]) ,aspect_ratio=1.0,axis = nothing,framestyle=:none,title="tenth slice",size=(400,450))
+plot(Gray.(phantom[:,:,10,400] ./ findmax(phantom[:,:,10,400])[1]) ,aspect_ratio=1.0,axis = nothing,framestyle=:none,title="tenth slice",size=(400,450))
 
 # ╔═╡ b52d0c52-164a-4c75-a138-923d02869023
 md"""
@@ -74,21 +72,99 @@ slices_without_motion = aqui[!,"Slice"][aqui[!,"Time"] .> max_motion]
 slices_ok = sort(slices_without_motion[s .<= slices_without_motion .<= e])
 
 # ╔═╡ 03771ec3-008b-4185-85fe-c498a5e60e66
-phantom_ok = phantom[:,:,slices_ok,:]
+phantom_ok = phantom[2:end,:,slices_ok,:]
+
+# ╔═╡ fe493d0b-1ac3-4ea9-a44f-5af78784e47d
+md"""
+Here we estimate middle and radius by hand
+"""
 
 # ╔═╡ e11e83b1-4f70-4622-a6bf-519286ae18d5
 md"""
 Estimate center
 $(@bind h html"<input type=range min=1 max=84 value=42>")horz
 $(@bind v html"<input type=range min=1 max=84 value=42>")vert
+$(@bind r html"<input type=range min=1 max=40 value=10>")radius
+"""
+
+# ╔═╡ b9389e5d-82f0-45e1-9697-4a9af900a0fd
+(v,h,r)
+
+# ╔═╡ abd4e302-5be2-43e1-90f6-44f1ae3198b6
+(thres_upper,thres_lower)
+
+# ╔═╡ 108254f4-12f8-478b-907f-43d996bfc6af
+md"""
+we can also try a more automated way by getting the center of mass and then
+estimate the mask from there
+"""
+
+# ╔═╡ ef460365-6f17-43ba-9c3e-abdecb92ef0d
+begin
+	x_range = 1:84
+	y_range = 1:83
+	x_grid = x_range' .* ones(length(y_range))
+	y_grid = ones(length(x_range))' .* y_range
+end
+
+# ╔═╡ 7f4bb963-5abd-4c44-ac6d-89bd6e4e5ca6
+md"""
+pick slice and time
+$(@bind pick_slice html"<input type=range min=1 max=9 value=1>")slice
+$(@bind time html"<input type=range min=1 max=800 value=6>")time
 """
 
 # ╔═╡ 3b794916-b6dc-40e1-874d-ea3db6533cf4
 begin
-plot(Gray.(phantom_ok[:,:,1,6] ./ findmax(phantom[:,:,1,1])[1]) ,aspect_ratio=1.0,axis = nothing,framestyle=:none,title="first ok slice",size=(400,450))
-hline!([h],color=:red,label="horz $h")
-vline!([v],color=:green,label="vert $v")
+	plot(Gray.(phantom_ok[:,:,pick_slice,time] ./ findmax(phantom_ok[:,:,pick_slice,time])[1]),
+		aspect_ratio=1.0,
+		axis = nothing,
+		framestyle=:none,
+		title="first ok slice",
+		size=(400,450))
+	hline!([h],color=:red,label="horz $h")
+	vline!([v],color=:green,label="vert $v")
+	phi = 0:0.01:2π
+	circle_x = r .* cos.(phi) .+ v
+	circle_y = r .* sin.(phi) .+ h
+	plot!(circle_x, circle_y, label="radius $r")
 end
+
+# ╔═╡ 9518856b-5eed-4a99-8e51-f2a08e4f8228
+maxint = findmax(phantom_ok[:,:,pick_slice,time])
+
+# ╔═╡ b03fc810-65a8-43b9-a2a9-7051f1979e64
+minint = findmin(phantom_ok[:,:,pick_slice,time])
+
+# ╔═╡ e7172e60-f796-45d0-9e63-c4aefe37a45a
+mean(phantom_ok[:,:,pick_slice,time])
+
+# ╔═╡ c02d0ede-4b74-41ac-844c-8746532d14d2
+mask = phantom_ok[:,:,pick_slice,time] .> minint[1]*5
+
+# ╔═╡ 11e82358-e5e6-48d9-998a-7a01f1ebbb92
+plot(Red.(mask))
+
+# ╔═╡ 341eff6d-1a32-4aa3-a6f0-17bbe53997c4
+cm_x = sum(x_grid .* phantom_ok[:,:,pick_slice,time])/sum(phantom_ok[:,:,pick_slice,time])
+
+# ╔═╡ 5f1204b2-70be-42db-93a7-841a3bc81671
+cm_y = sum(y_grid .* phantom_ok[:,:,pick_slice,time])/sum(phantom_ok[:,:,pick_slice,time])
+
+# ╔═╡ dadffda4-fa90-4468-b0e9-65591ee42cd6
+begin
+newmask = copy(mask)
+for ix in 1:84
+	for iy in 1:83
+		if (ix-cm_x)^2+(iy-cm_y)^2 < 16^2
+			newmask[ix,iy] = 1
+		end
+	end
+end
+end
+
+# ╔═╡ bdd11d90-b2a4-4d3c-8647-e2e68a470cfc
+plot(Red.(newmask))
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -100,6 +176,7 @@ Images = "916415d5-f1e6-5110-898d-aaa5f9f070e0"
 Measures = "442fdcdd-2543-5da2-b0f3-8c86c306513e"
 NIfTI = "a3a9e032-41b5-5fc4-967a-a6b7a19844d3"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 
 [compat]
 CSV = "~0.10.4"
@@ -1546,19 +1623,33 @@ version = "0.9.1+5"
 # ╔═╡ Cell order:
 # ╠═5b8d1c62-fc8f-11ec-202f-5f63a94bc6bf
 # ╠═6704f270-9d91-4d63-bf53-16e29c246605
-# ╠═00ad0f9e-ad79-40b6-b0ee-74c46827e62a
 # ╠═2c3bcfa6-1607-42cd-8ba3-53cf2f19c3fc
 # ╠═6116b291-ad7b-4191-9ec6-ce2fa0938121
 # ╠═462eed79-97b3-441a-ac9a-c70616acb166
-# ╠═5d9b4de4-7207-4f63-a8a3-b85f7823d736
-# ╟─b52d0c52-164a-4c75-a138-923d02869023
+# ╟─5d9b4de4-7207-4f63-a8a3-b85f7823d736
+# ╠═b52d0c52-164a-4c75-a138-923d02869023
 # ╠═d2851a2f-e974-4521-ab68-d6c3b262f347
 # ╠═55fbd777-f9ba-4215-bb39-1f856327e5d9
 # ╠═6bc8ebca-fe82-4c7e-bb22-a4ac623e5567
 # ╠═0551017a-51b3-4870-8266-4fce6a7e6ab2
 # ╠═d64abb4a-20ca-4b91-b04a-0f83f0f37eff
 # ╠═03771ec3-008b-4185-85fe-c498a5e60e66
+# ╟─fe493d0b-1ac3-4ea9-a44f-5af78784e47d
 # ╠═3b794916-b6dc-40e1-874d-ea3db6533cf4
 # ╟─e11e83b1-4f70-4622-a6bf-519286ae18d5
+# ╠═b9389e5d-82f0-45e1-9697-4a9af900a0fd
+# ╠═abd4e302-5be2-43e1-90f6-44f1ae3198b6
+# ╠═9518856b-5eed-4a99-8e51-f2a08e4f8228
+# ╠═b03fc810-65a8-43b9-a2a9-7051f1979e64
+# ╠═e7172e60-f796-45d0-9e63-c4aefe37a45a
+# ╠═11e82358-e5e6-48d9-998a-7a01f1ebbb92
+# ╠═c02d0ede-4b74-41ac-844c-8746532d14d2
+# ╠═108254f4-12f8-478b-907f-43d996bfc6af
+# ╠═ef460365-6f17-43ba-9c3e-abdecb92ef0d
+# ╠═341eff6d-1a32-4aa3-a6f0-17bbe53997c4
+# ╠═5f1204b2-70be-42db-93a7-841a3bc81671
+# ╠═dadffda4-fa90-4468-b0e9-65591ee42cd6
+# ╠═bdd11d90-b2a4-4d3c-8647-e2e68a470cfc
+# ╟─7f4bb963-5abd-4c44-ac6d-89bd6e4e5ca6
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
