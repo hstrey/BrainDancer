@@ -24,10 +24,15 @@ end
 # ╔═╡ 6704f270-9d91-4d63-bf53-16e29c246605
 phantom = niread("/Users/hstrey/Desktop/Phantom_talk/Phantom dataset/epi/epi.nii")
 
+# ╔═╡ 4ff856d5-de11-4876-acd4-7e48d88fa2fb
+# saving header for later use
+phantom_head = phantom.header
+
 # ╔═╡ 2c3bcfa6-1607-42cd-8ba3-53cf2f19c3fc
 vsize = voxel_size(phantom.header)    # In mm
 
 # ╔═╡ 6116b291-ad7b-4191-9ec6-ce2fa0938121
+# function to display images in red
 Red(x) = RGB(x,0,0)
 
 # ╔═╡ 462eed79-97b3-441a-ac9a-c70616acb166
@@ -61,6 +66,16 @@ phantom_ok = phantom[2:end,:,s:e,:]
 
 # ╔═╡ 1fce80c1-e747-4d19-997c-31400e8a864c
 phantom_static = mean(phantom_ok, dims=4)[:,:,:,1]
+
+# ╔═╡ c8c923e0-ab23-4d0c-b370-7f4018ae0b43
+# using the original NIfTI header and changing the dimensions
+phantom_head.dim = (3,83,84,12,1,1,1,1)
+
+# ╔═╡ 4205ab34-d85c-4b61-8311-94e2b5663b5b
+ni_static = NIVolume(phantom_head, phantom_static)
+
+# ╔═╡ a00819fc-f642-49a3-b742-05d8fd4a9f70
+niwrite("static.nii",ni_static)
 
 # ╔═╡ fe493d0b-1ac3-4ea9-a44f-5af78784e47d
 md"""
@@ -155,6 +170,12 @@ end
 
 # ╔═╡ bdd11d90-b2a4-4d3c-8647-e2e68a470cfc
 plot(Red.(newmask))
+
+# ╔═╡ a9a5e45b-2e96-48b3-bebd-8784a015326d
+ni = NIVolume(newmask)
+
+# ╔═╡ 52fe4da3-062e-4222-b7c9-28e9ab7449f9
+niwrite("my.nii", ni)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -1613,6 +1634,7 @@ version = "0.9.1+5"
 # ╔═╡ Cell order:
 # ╠═5b8d1c62-fc8f-11ec-202f-5f63a94bc6bf
 # ╠═6704f270-9d91-4d63-bf53-16e29c246605
+# ╠═4ff856d5-de11-4876-acd4-7e48d88fa2fb
 # ╠═2c3bcfa6-1607-42cd-8ba3-53cf2f19c3fc
 # ╠═6116b291-ad7b-4191-9ec6-ce2fa0938121
 # ╠═462eed79-97b3-441a-ac9a-c70616acb166
@@ -1620,6 +1642,9 @@ version = "0.9.1+5"
 # ╠═b52d0c52-164a-4c75-a138-923d02869023
 # ╠═03771ec3-008b-4185-85fe-c498a5e60e66
 # ╠═1fce80c1-e747-4d19-997c-31400e8a864c
+# ╠═c8c923e0-ab23-4d0c-b370-7f4018ae0b43
+# ╠═4205ab34-d85c-4b61-8311-94e2b5663b5b
+# ╠═a00819fc-f642-49a3-b742-05d8fd4a9f70
 # ╟─fe493d0b-1ac3-4ea9-a44f-5af78784e47d
 # ╠═3b794916-b6dc-40e1-874d-ea3db6533cf4
 # ╠═e11e83b1-4f70-4622-a6bf-519286ae18d5
@@ -1637,5 +1662,7 @@ version = "0.9.1+5"
 # ╠═dadffda4-fa90-4468-b0e9-65591ee42cd6
 # ╠═bdd11d90-b2a4-4d3c-8647-e2e68a470cfc
 # ╠═7f4bb963-5abd-4c44-ac6d-89bd6e4e5ca6
+# ╠═a9a5e45b-2e96-48b3-bebd-8784a015326d
+# ╠═52fe4da3-062e-4222-b7c9-28e9ab7449f9
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
