@@ -73,20 +73,20 @@ begin
 end
 
 # ╔═╡ 03771ec3-008b-4185-85fe-c498a5e60e66
-phantom_ok = phantom[2:end,:,s:e,:]
+# for bias field correction we only need static ok images
+# also disregard empty row
+phantom_ok = phantom[2:end,:,s:e,1:200]
 
 # ╔═╡ 1fce80c1-e747-4d19-997c-31400e8a864c
+# average over the first 200 static slices
 phantom_static = mean(phantom_ok, dims=4)[:,:,:,1]
 
 # ╔═╡ c8c923e0-ab23-4d0c-b370-7f4018ae0b43
 # using the original NIfTI header and changing the dimensions
 phantom_head.dim = (3,83,84,12,1,1,1,1)
 
-# ╔═╡ 4205ab34-d85c-4b61-8311-94e2b5663b5b
+# ╔═╡ 94258efc-5f30-4d9d-8c1a-9710357866cf
 ni_static = NIVolume(phantom_head, phantom_static)
-
-# ╔═╡ a00819fc-f642-49a3-b742-05d8fd4a9f70
-niwrite("static.nii",ni_static)
 
 # ╔═╡ fe493d0b-1ac3-4ea9-a44f-5af78784e47d
 md"""
@@ -198,7 +198,14 @@ ml = Int16.(convert(Array,VectorOfArray(mask_list)))
 ni_mask = NIVolume(phantom_head, ml)
 
 # ╔═╡ d25ff77c-3b2d-4f0a-a798-83f12643e142
-niwrite("mask.nii",ni_mask)
+# ╠═╡ disabled = true
+#=╠═╡
+# write out the static phantom and its mask
+begin
+	niwrite("mask.nii",ni_mask)
+	niwrite("static.nii",ni_static)
+end
+  ╠═╡ =#
 
 # ╔═╡ Cell order:
 # ╠═5b8d1c62-fc8f-11ec-202f-5f63a94bc6bf
@@ -212,8 +219,7 @@ niwrite("mask.nii",ni_mask)
 # ╠═03771ec3-008b-4185-85fe-c498a5e60e66
 # ╠═1fce80c1-e747-4d19-997c-31400e8a864c
 # ╠═c8c923e0-ab23-4d0c-b370-7f4018ae0b43
-# ╠═4205ab34-d85c-4b61-8311-94e2b5663b5b
-# ╠═a00819fc-f642-49a3-b742-05d8fd4a9f70
+# ╠═94258efc-5f30-4d9d-8c1a-9710357866cf
 # ╟─fe493d0b-1ac3-4ea9-a44f-5af78784e47d
 # ╠═3b794916-b6dc-40e1-874d-ea3db6533cf4
 # ╠═e11e83b1-4f70-4622-a6bf-519286ae18d5
