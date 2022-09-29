@@ -21,7 +21,26 @@ x_range = -4:0.1:4.0
 y_range = -4:0.1:4.0
 
 # ╔═╡ 150e1531-c18d-4d9f-acf0-a800e3c62f42
-heatmap(x_range,y_range,gcircle,aspect_ratio=1)
+begin
+	heatmap(x_range,y_range,gcircle,aspect_ratio=1)
+	#savefig("circle.png")
+end
+
+# ╔═╡ 26623943-a072-451e-b76a-68f7d24c9d92
+function gellipse(x,y,x0,y0,rx,ry,θ,A,σ)
+	dx = x - x0
+	dy = y - y0
+	ct = cos(θ)
+	st = sin(θ)
+	return -A*exp(-(1-sqrt((dx*ct+dy*st)^2/rx^2+(dx*st-dy*ct)^2/ry^2))^2/σ^2)
+end
+
+# ╔═╡ 141a2704-2aac-4eb6-9158-9f36af7e037c
+begin
+	heatmap(x_range,y_range,
+			(x,y)->gellipse(x,y,0.0,0.0,1.0,2.0,π/3,1.0,0.05),aspect_ratio=1)
+	#savefig("ellipse.png")
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -963,5 +982,7 @@ version = "1.4.1+0"
 # ╠═76e8ea2d-14b7-4291-98cd-0977ade82a87
 # ╠═d338e459-e87e-4321-88df-3649bb23832b
 # ╠═150e1531-c18d-4d9f-acf0-a800e3c62f42
+# ╠═26623943-a072-451e-b76a-68f7d24c9d92
+# ╠═141a2704-2aac-4eb6-9158-9f36af7e037c
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
