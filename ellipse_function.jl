@@ -24,9 +24,10 @@ begin
 	Pkg.add("DataFrames")
 	Pkg.add("Statistics")
 	Pkg.add("RecursiveArrayTools")
+	Pkg.add("LsqFit")
 	Pkg.develop(url="https://github.com/JuliaNeuroscience/NIfTI.jl")
 	using Plots, NIfTI, Statistics, Colors, Images, Measures
-	using DataFrames
+	using DataFrames, LsqFit
 	using RecursiveArrayTools
 end
 
