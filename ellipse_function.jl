@@ -64,6 +64,9 @@ begin
 	#savefig("ellipse.png")
 end
 
+# ╔═╡ 6a0a68ce-d0c5-4121-ba6d-92827a79bd36
+Red(x) = RGB(x,0,0)
+
 # ╔═╡ 2b14019b-d81b-43c8-9f4d-e6eae6fc338a
 phantom = niread("/Users/hstrey/Desktop/Phantom_talk/Phantom dataset/epi/epi.nii")
 
@@ -118,7 +121,7 @@ begin
 	ps = size(phantom_static[:,:,pick_slice])
 	for i in 1:ps[1]
 		for j in 1:ps[2]
-			if i^2+j^2>(r^2/4) && i^2+j^2<(1.5*r)^2
+			if (i-h)^2+(j-v)^2>(r^2/4) && (i-h)^2+(j-v)^2<(1.5*r)^2
 				push!(x_list,i)
 				push!(y_list,j)
 				push!(z_list,phantom_static[i,j,pick_slice])
@@ -127,8 +130,16 @@ begin
 	end
 end
 
-# ╔═╡ 4d7e6f2a-31b5-4fdb-8bec-ddf4e581e44b
-x_list
+# ╔═╡ 426cf44d-0b4f-450f-9fa7-1c2182dcb0aa
+begin
+	mask = zeros(size(phantom_static[:,:,pick_slice]))
+	for (i,j) in zip(x_list,y_list)
+		mask[i,j]=1.0
+	end
+end
+
+# ╔═╡ 9ff20783-a966-4afc-a140-2c71239221e6
+plot(Red.(mask))
 
 # ╔═╡ Cell order:
 # ╠═516fb872-3f9f-11ed-3ae3-f7e56bdfe688
@@ -138,13 +149,15 @@ x_list
 # ╠═150e1531-c18d-4d9f-acf0-a800e3c62f42
 # ╠═26623943-a072-451e-b76a-68f7d24c9d92
 # ╠═141a2704-2aac-4eb6-9158-9f36af7e037c
+# ╠═6a0a68ce-d0c5-4121-ba6d-92827a79bd36
 # ╠═2b14019b-d81b-43c8-9f4d-e6eae6fc338a
 # ╠═1da66576-532e-42e7-b724-31171ecce3bd
 # ╠═bf538333-7ad8-417e-a998-0c6f4007d438
 # ╠═7a130413-59cc-434c-9835-16df8ec239c2
-# ╠═a815b01b-2ff0-47fe-9a82-5906d69fdb03
+# ╟─a815b01b-2ff0-47fe-9a82-5906d69fdb03
 # ╟─7c8808c3-97e4-4139-ba9b-cf38d4b63636
 # ╠═bec5704f-40f8-4e1a-b197-8b5f53a75616
 # ╠═21019261-f46a-49ea-a477-9383df80ea18
 # ╠═f5e13e16-3181-433a-874d-725c4a8cc989
-# ╠═4d7e6f2a-31b5-4fdb-8bec-ddf4e581e44b
+# ╠═426cf44d-0b4f-450f-9fa7-1c2182dcb0aa
+# ╠═9ff20783-a966-4afc-a140-2c71239221e6
