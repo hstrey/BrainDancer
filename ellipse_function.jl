@@ -74,13 +74,16 @@ phantom = niread("/Users/hstrey/Desktop/Phantom_talk/Phantom dataset/epi/epi.nii
 phantom_ok = phantom[2:end,:,:,1:200]
 
 # ╔═╡ bf538333-7ad8-417e-a998-0c6f4007d438
-phantom_static = mean(phantom_ok, dims=4)[:,:,:,1]
+phantom_static = niread("static_bfc.nii")
 
 # ╔═╡ a815b01b-2ff0-47fe-9a82-5906d69fdb03
 md"""
 pick slice and time
 $(@bind pick_slice html"<input type=range min=1 max=28 value=1>")slice
 """
+
+# ╔═╡ 21019261-f46a-49ea-a477-9383df80ea18
+size(phantom_static[:,:,pick_slice])
 
 # ╔═╡ 7c8808c3-97e4-4139-ba9b-cf38d4b63636
 md"""
@@ -109,9 +112,6 @@ begin
 	plot!(circle_x, circle_y, label="radius $r")
 end
 
-# ╔═╡ 21019261-f46a-49ea-a477-9383df80ea18
-size(phantom_static[:,:,pick_slice])
-
 # ╔═╡ f5e13e16-3181-433a-874d-725c4a8cc989
 # we need to extract pixels that are half way to the outer and inner ring
 begin
@@ -138,8 +138,64 @@ begin
 	end
 end
 
-# ╔═╡ 9ff20783-a966-4afc-a140-2c71239221e6
-plot(Red.(mask))
+# ╔═╡ 89c39b45-2e15-4706-8506-4ad5d50078a0
+begin
+	plot(Gray.(phantom_static[:,:,pick_slice] .* mask)./ findmax(phantom_static[:,:,pick_slice])[1],
+	aspect_ratio=1.0,
+		axis = nothing,
+		framestyle=:none,
+		title="first ok slice",
+		size=(400,450))
+	hline!([h],color=:red,label="horz $h")
+	vline!([v],color=:green,label="vert $v")
+	plot!(circle_x, circle_y, label="radius $r")
+end
+
+# ╔═╡ fde99231-c059-4753-a4f7-b79865cca411
+plot(phantom_static[h,:,pick_slice])
+
+# ╔═╡ 4d85c9d4-5188-4297-950d-b797996d2440
+phantom_static[h,v,pick_slice]
+
+# ╔═╡ 4843e623-1498-4d76-8576-f6e88493fc62
+function gaussellipse(xy,p)
+	x0,y0,rx,ry,θ,A,bg,σ = p #unpack parameters
+	x = xy[:,1]
+	y = xy[:,2]
+	dx = x .- x0
+	dy = y .- y0
+	ct = cos(θ)
+	st = sin(θ)
+	return bg .- A * exp.( -(1 .-sqrt.(( dx .* ct .+ dy .* st ).^2/rx^2+(dx .* st .- dy .* ct).^2/ry^2)).^2/σ^2)
+end
+
+# ╔═╡ fbd83fde-fd06-4dd1-bf8c-2e2eeff491c1
+function gaellipse(x,y,p)
+	x0,y0,rx,ry,θ,A,bg,σ = p #unpack parameters
+	dx = x - x0
+	dy = y - y0
+	ct = cos(θ)
+	st = sin(θ)
+	return bg - A * exp( -(1 -sqrt(( dx * ct + dy * st )^2/rx^2+(dx * st - dy * ct)^2/ry^2))^2/σ^2)
+end
+
+# ╔═╡ 1255746f-4d9a-4a7f-af18-99b188fc7acf
+xy = hcat(x_list,y_list)
+
+# ╔═╡ d094e7c9-cd3b-40bb-b787-0c930b67962d
+p0 = Float64.([h, v, r, r, 0, phantom_static[h,v,pick_slice]-400, phantom_static[h,v,pick_slice], 0.1])
+
+# ╔═╡ da07ba0b-1f2c-49d0-8dd1-e670e890f487
+fit = curve_fit(gaussellipse, xy, z_list, p0)
+
+# ╔═╡ b071db02-337c-4137-ac62-b9851d9252a0
+x_r = 0:0.1:85
+
+# ╔═╡ 79af4b39-2d98-4e48-86d1-1ffd45215b4c
+y_r = 0:0.1:85
+
+# ╔═╡ 2e936a60-fc70-4e21-bb1e-e953e41165da
+heatmap(x_r,y_r,(x,y)->gaellipse(x,y,fit.param),aspect_ratio=1)
 
 # ╔═╡ Cell order:
 # ╠═516fb872-3f9f-11ed-3ae3-f7e56bdfe688
@@ -155,9 +211,19 @@ plot(Red.(mask))
 # ╠═bf538333-7ad8-417e-a998-0c6f4007d438
 # ╠═7a130413-59cc-434c-9835-16df8ec239c2
 # ╟─a815b01b-2ff0-47fe-9a82-5906d69fdb03
-# ╟─7c8808c3-97e4-4139-ba9b-cf38d4b63636
 # ╠═bec5704f-40f8-4e1a-b197-8b5f53a75616
 # ╠═21019261-f46a-49ea-a477-9383df80ea18
 # ╠═f5e13e16-3181-433a-874d-725c4a8cc989
 # ╠═426cf44d-0b4f-450f-9fa7-1c2182dcb0aa
-# ╠═9ff20783-a966-4afc-a140-2c71239221e6
+# ╟─7c8808c3-97e4-4139-ba9b-cf38d4b63636
+# ╠═89c39b45-2e15-4706-8506-4ad5d50078a0
+# ╠═fde99231-c059-4753-a4f7-b79865cca411
+# ╠═4d85c9d4-5188-4297-950d-b797996d2440
+# ╠═4843e623-1498-4d76-8576-f6e88493fc62
+# ╠═fbd83fde-fd06-4dd1-bf8c-2e2eeff491c1
+# ╠═1255746f-4d9a-4a7f-af18-99b188fc7acf
+# ╠═d094e7c9-cd3b-40bb-b787-0c930b67962d
+# ╠═da07ba0b-1f2c-49d0-8dd1-e670e890f487
+# ╠═b071db02-337c-4137-ac62-b9851d9252a0
+# ╠═79af4b39-2d98-4e48-86d1-1ffd45215b4c
+# ╠═2e936a60-fc70-4e21-bb1e-e953e41165da
