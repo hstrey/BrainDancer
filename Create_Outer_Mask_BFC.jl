@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.11
+# v0.19.9
 
 using Markdown
 using InteractiveUtils
@@ -25,8 +25,7 @@ begin
 	Pkg.add("DataFrames")
 	Pkg.add("Statistics")
 	Pkg.add("RecursiveArrayTools")
-	# Pkg.develop(path=joinpath(@__DIR__, "..", "NIfTI.jl"))
-	Pkg.add("NIfTI")
+	Pkg.develop(path=joinpath(@__DIR__, "..", "NIfTI.jl"))
 	using Plots, CSV, NIfTI, Colors, Images, Measures
 	using DataFrames
 	using Statistics
@@ -84,7 +83,7 @@ phantom_static = mean(phantom_ok, dims=4)[:,:,:,1]
 
 # ╔═╡ c8c923e0-ab23-4d0c-b370-7f4018ae0b43
 # using the original NIfTI header and changing the dimensions
-phantom_head.dim = (3,83,84,12,1,1,1,1)
+phantom_head.dim = (3,83,84,e-s+1,1,1,1,1)
 
 # ╔═╡ 94258efc-5f30-4d9d-8c1a-9710357866cf
 ni_static = NIVolume(phantom_head, phantom_static)
@@ -204,12 +203,28 @@ mlF = convert(Array{Float32, 3},ml)
 # ╔═╡ 25e098c1-53fb-478c-93e2-5f4723610013
 ni_mask = NIVolume(phantom_head, mlF)
 
+# ╔═╡ a355e49d-6206-4190-8add-1179164d1724
+Good_slices = phantom[2:end,:,s:e,:]
+
+# ╔═╡ bc8410c4-1316-40dd-898f-4d2227b237d1
+phantom_slices = phantom.header
+
+# ╔═╡ 7b77e696-9933-4bf3-bf2b-ba1a61944f40
+phantom_slices.dim = (4,83,84,e-s+1,800,1,1,1)
+
+# ╔═╡ eed9c70f-d7f7-43a0-a3f1-f2155161e92b
+ni_whole = NIVolume(phantom_slices, Good_slices)
+
 # ╔═╡ d25ff77c-3b2d-4f0a-a798-83f12643e142
+# ╠═╡ disabled = true
+#=╠═╡
 # write out the static phantom and its mask
 begin
 	niwrite("outmask.nii",ni_mask)
 	niwrite("static.nii",ni_static)
+	niwrite("Good_slices.nii",ni_whole)
 end
+  ╠═╡ =#
 
 # ╔═╡ Cell order:
 # ╠═5b8d1c62-fc8f-11ec-202f-5f63a94bc6bf
@@ -245,4 +260,8 @@ end
 # ╠═2f009527-88d5-4bd3-b3e6-ac756e8fb2c6
 # ╠═a9b24226-57f9-4302-b854-010c88b98596
 # ╠═25e098c1-53fb-478c-93e2-5f4723610013
+# ╠═a355e49d-6206-4190-8add-1179164d1724
+# ╠═bc8410c4-1316-40dd-898f-4d2227b237d1
+# ╠═7b77e696-9933-4bf3-bf2b-ba1a61944f40
+# ╠═eed9c70f-d7f7-43a0-a3f1-f2155161e92b
 # ╠═d25ff77c-3b2d-4f0a-a798-83f12643e142

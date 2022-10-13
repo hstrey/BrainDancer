@@ -83,7 +83,7 @@ phantom_static = mean(phantom_ok, dims=4)[:,:,:,1]
 
 # ╔═╡ c8c923e0-ab23-4d0c-b370-7f4018ae0b43
 # using the original NIfTI header and changing the dimensions
-phantom_head.dim = (3,83,84,12,1,1,1,1)
+phantom_head.dim = (3,83,84,e-s+1,1,1,1,1)
 
 # ╔═╡ 94258efc-5f30-4d9d-8c1a-9710357866cf
 ni_static = NIVolume(phantom_head, phantom_static)
@@ -197,6 +197,18 @@ ml = Int16.(convert(Array,VectorOfArray(mask_list)))
 # ╔═╡ 25e098c1-53fb-478c-93e2-5f4723610013
 ni_mask = NIVolume(phantom_head, ml)
 
+# ╔═╡ 9fcb4683-d76c-4f15-b3a5-63d0b2ba9dcc
+Good_slices = phantom[2:end,:,s:e,:]
+
+# ╔═╡ f44507ee-501d-4a7d-8019-b314272b90bd
+phantom_slices = phantom.header
+
+# ╔═╡ 613decfa-c2c3-4426-af1a-4fb68e5839b5
+phantom_slices.dim = (4,83,84,e-s+1,800,1,1,1)
+
+# ╔═╡ 3afa8868-6834-4fd2-a76a-065ea531b3f1
+ni_whole = NIVolume(phantom_slices, Good_slices)
+
 # ╔═╡ d25ff77c-3b2d-4f0a-a798-83f12643e142
 # ╠═╡ disabled = true
 #=╠═╡
@@ -204,6 +216,7 @@ ni_mask = NIVolume(phantom_head, ml)
 begin
 	niwrite("mask.nii",ni_mask)
 	niwrite("static.nii",ni_static)
+	niwrite("Good_slices.nii",ni_whole)
 end
   ╠═╡ =#
 
@@ -240,4 +253,8 @@ end
 # ╠═7f4bb963-5abd-4c44-ac6d-89bd6e4e5ca6
 # ╠═2f009527-88d5-4bd3-b3e6-ac756e8fb2c6
 # ╠═25e098c1-53fb-478c-93e2-5f4723610013
+# ╠═9fcb4683-d76c-4f15-b3a5-63d0b2ba9dcc
+# ╠═f44507ee-501d-4a7d-8019-b314272b90bd
+# ╠═613decfa-c2c3-4426-af1a-4fb68e5839b5
+# ╠═3afa8868-6834-4fd2-a76a-065ea531b3f1
 # ╠═d25ff77c-3b2d-4f0a-a798-83f12643e142
