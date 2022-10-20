@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.11
+# v0.19.13
 
 using Markdown
 using InteractiveUtils
@@ -18,7 +18,7 @@ end
 begin
     import Pkg
     Pkg.activate(".")
-	# for p in ["Plots", "Colors", "NIfTI", "Images", "ImageSegmentation", "ImageMorphology"]
+	# for p in ["Plots", "Colors", "NIfTI", "Images", "ImageSegmentation", "ImageMorphology", "LsqFit"]
 	# 	Pkg.add(p)
 	# end
 	
@@ -26,7 +26,7 @@ begin
 	using NIfTI
 	using Images, ImageSegmentation, ImageMorphology
 	using Statistics
-	using LinearAlgebra
+	using LinearAlgebra, LsqFit
 end
 
 # ╔═╡ d6ce949d-d0ef-4b9b-a7e1-b2a7c2258213
@@ -38,7 +38,9 @@ const DATA_DIR = "../PhantomData"
 
 # ╔═╡ 5a4c6be4-7657-47cd-ae84-dedd2f1facd9
 # Load data
-phantom, masks = niread(joinpath(DATA_DIR, "static.nii")),
+# phantom, masks = niread(joinpath(DATA_DIR, "static.nii")),
+#  				 niread(joinpath(DATA_DIR, "mask.nii"));
+phantom, masks = niread("static_bfc.nii"),
  				 niread(joinpath(DATA_DIR, "mask.nii"));
 
 # ╔═╡ 92d88bd4-c8e5-4167-bc40-011b44d3d021
@@ -61,30 +63,28 @@ end
 md"""
 Preview parameters:
 - Image #: $(@bind imgid html"<input type=range min=1 max=12 value=1></input>")
-- Total segments: $(@bind segcount html"<input type=number value=4></input>")
-- Segmentation threshold: $(@bind segcth html"<input type=number value=75></input>")
-- Segment #: $(@bind segno html"<input type=number value=1></input>")
 """
 
 # ╔═╡ 38e41da3-fdc1-4221-81c6-69de56162066
-let img = genimg(phantom[:,:,imgid])
+let img = phantom[:,:,imgid]
 	# segment image
-	segments = felzenszwalb(img, segcount, segcth)
-	# select segment
-	seg = Gray.(map(j-> j == segno ? 1 : 0, labels_map(segments)))
-	# get segment border
-	mseg = morpholaplace(seg)
+	segs = segment3(img)
+	# get an edge on the inner segment
+	img_edges = edge3(segs)
 	# estimate ellipse params
-	E = mseg |> getcoordinates |> fitellipsedirect |> canonical
+	E = fitellipse3(img, segs, img_edges)
+	xo, yo, a, b, θ, _  = E
+	xα = (α) -> a*cos(α)*cos(θ) - b*sin(α)*sin(θ) + xo
+	yα = (α) -> a*cos(α)*sin(θ) + b*sin(α)*cos(θ) + yo
 	# show center	
-	img[round.(Int, E[3:4])...] = 1
+	img[round.(Int, (xo, yo))...] = 0
 	# show ellipse
-	for (x,y) in [round.(Int, (E[3]-E[1]*sin(t), E[4]+E[2]*cos(t))) for t in 0:0.1:2π]
-		img[x,y] = 1
+	for (x,y) in [round.(Int, (xα(t), yα(t))) for t in 0:0.1:2π]
+		img[x,y] = 2500
 	end
 	# show image
-	pseg = showsegments(segments)
-	pimg = plot(Gray.(img) ,aspect_ratio=1.0,axis = nothing,framestyle=:none,title="img #$imgid",size=(300,350))
+	pseg = plot(Gray.(map(i->i-1, labels_map(segs)) |> genimg), aspect_ratio=1.0, axis=nothing, framestyle=:none, title="segments",)
+	pimg = plot(Gray.(genimg(img)), aspect_ratio=1.0, axis=nothing, framestyle=:none, title="img #$imgid", size=(300,350))
 	plot(pimg, pseg)
 end
 
@@ -97,4 +97,4 @@ end
 # ╟─b68e388a-2967-464f-9c90-cdb67eb97e2e
 # ╟─919d2a18-1c0a-4d4d-a29c-7b50e10549fa
 # ╟─1ca425e8-8a91-44f7-baa6-eed2c176e1ec
-# ╟─38e41da3-fdc1-4221-81c6-69de56162066
+# ╠═38e41da3-fdc1-4221-81c6-69de56162066
