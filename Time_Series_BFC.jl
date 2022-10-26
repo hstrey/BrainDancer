@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.9
+# v0.19.13
 
 using Markdown
 using InteractiveUtils
@@ -25,7 +25,9 @@ begin
 	Pkg.add("DataFrames")
 	Pkg.add("Statistics")
 	Pkg.add("RecursiveArrayTools")
-	Pkg.add("NIfTI")
+	Pkg.develop(url="https://github.com/JuliaNeuroscience/NIfTI.jl")
+	Pkg.add("Plots")
+	Pkg.add("CSV")
 	using Plots, CSV, NIfTI, Colors, Images, Measures
 	using DataFrames
 	using Statistics
@@ -33,7 +35,10 @@ begin
 end
 
 # ╔═╡ 6704f270-9d91-4d63-bf53-16e29c246605
-phantom = niread("/Users/theok/Desktop/PhD/Git/BD_Bash/epi.nii")
+phantom = niread("/Users/hstrey/Desktop/Phantom_talk/Phantom dataset/epi/epi.nii")
+
+# ╔═╡ 8f178d20-c6c2-4e55-8bf4-9cb016b785ee
+size(phantom)
 
 # ╔═╡ 4ff856d5-de11-4876-acd4-7e48d88fa2fb
 # saving header for later use
@@ -75,7 +80,15 @@ end
 # ╔═╡ 03771ec3-008b-4185-85fe-c498a5e60e66
 # for bias field correction we only need static ok images
 # also disregard empty row
-phantom_ok = phantom[2:end,:,s:e,1:200]
+begin
+	if s > 1
+		stack_start = s-1
+	end
+	if e < size(phantom)[3]
+		stack_end = e+1
+	end
+	phantom_ok = phantom[2:end,:,stack_start:stack_end,1:200]
+end
 
 # ╔═╡ 1fce80c1-e747-4d19-997c-31400e8a864c
 # average over the first 200 static slices
@@ -83,7 +96,7 @@ phantom_static = mean(phantom_ok, dims=4)[:,:,:,1]
 
 # ╔═╡ c8c923e0-ab23-4d0c-b370-7f4018ae0b43
 # using the original NIfTI header and changing the dimensions
-phantom_head.dim = (3,83,84,e-s+1,1,1,1,1)
+phantom_head.dim = (3,83,84,stack_end-stack_start+1,1,1,1,1)
 
 # ╔═╡ 94258efc-5f30-4d9d-8c1a-9710357866cf
 ni_static = NIVolume(phantom_head, phantom_static)
@@ -122,6 +135,7 @@ begin
 	y_range = 1:83
 	x_grid = x_range' .* ones(length(y_range))
 	y_grid = ones(length(x_range))' .* y_range
+	""
 end
 
 # ╔═╡ 230f1a54-609e-4cf1-981c-174792780656
@@ -177,7 +191,10 @@ minint = findmin(phantom_static[:,:,pick_slice])
 mean(phantom_static[:,:,pick_slice])
 
 # ╔═╡ c02d0ede-4b74-41ac-844c-8746532d14d2
-mask = phantom_static[:,:,pick_slice] .> lt
+begin
+	mask = phantom_static[:,:,pick_slice] .> lt
+	"create mask"
+end
 
 # ╔═╡ 11e82358-e5e6-48d9-998a-7a01f1ebbb92
 plot(Red.(mask))
@@ -198,43 +215,46 @@ ml = Float32.(convert(Array,VectorOfArray(mask_list)))
 ni_mask = NIVolume(phantom_head, ml)
 
 # ╔═╡ 9fcb4683-d76c-4f15-b3a5-63d0b2ba9dcc
-Good_slices = phantom[2:end,:,s:e,:]
+Good_slices = phantom[2:end,:,stack_start:stack_end,:]
 
 # ╔═╡ f44507ee-501d-4a7d-8019-b314272b90bd
 phantom_slices = phantom.header
 
 # ╔═╡ 613decfa-c2c3-4426-af1a-4fb68e5839b5
-phantom_slices.dim = (4,83,84,e-s+1,800,1,1,1)
+phantom_slices.dim = (4,83,84,stack_end-stack_start+1,800,1,1,1)
+
+# ╔═╡ d5cecab3-1d59-43bf-92fb-4084247a8e85
+stack_end-stack_start+1
 
 # ╔═╡ 3afa8868-6834-4fd2-a76a-065ea531b3f1
 ni_whole = NIVolume(phantom_slices, Good_slices)
 
 # ╔═╡ d25ff77c-3b2d-4f0a-a798-83f12643e142
-# ╠═╡ disabled = true
-#=╠═╡
 # write out the static phantom and its mask
 begin
 	niwrite("mask.nii",ni_mask)
 	niwrite("static.nii",ni_static)
-	#niwrite("Good_slices.nii",ni_whole)
+	niwrite("Good_slices.nii",ni_whole)
 end
-  ╠═╡ =#
 
 # ╔═╡ 87b6f9b0-7a4f-4e0c-99ce-1f5adb65ce60
-# no verbal; if want verbal, -v
-ANTscommand = `N4BiasFieldCorrection -s 1 -d 3 -b \[ 150,3 \] -i static.nii -x mask.nii -o \[ BFC_static.nii, BFC_bias.nii \]`
+# no verbose; if want verbose, -v
+ANTscommand = `N4BiasFieldCorrection -s 1 -d 3 -b \[ 300,3 \] -i static.nii -x mask.nii -o \[ BFC_static300.nii, BFC_bias300.nii \]`
 
 # ╔═╡ 296d707f-a65c-4e21-becb-f6dc06e2b3e8
 typeof(ANTscommand)
 
 # ╔═╡ 852d086f-9b13-4f7c-b831-1dd2d68378b9
+# ╠═╡ disabled = true
+#=╠═╡
 run(ANTscommand)
+  ╠═╡ =#
 
 # ╔═╡ 6acaf6cc-c43c-4ba6-97f1-7842129a3d38
-bias = niread("BFC_bias.nii")
+bias = niread("BFC_bias200.nii")
 
 # ╔═╡ 7e895010-048d-4fde-ad9c-684b979319a4
-Corrected = niread("BFC_static.nii")
+Corrected = niread("BFC_static200.nii")
 
 # ╔═╡ f66b5dd2-5b16-425d-830d-7006bdac3bde
 begin
@@ -279,7 +299,10 @@ begin
 end
 
 # ╔═╡ b5c2f9bb-f487-4a92-904d-a8714eb0da04
+# ╠═╡ disabled = true
+#=╠═╡
 BFC_NIfTI = NIVolume(phantom_slices, BFC_image)
+  ╠═╡ =#
 
 # ╔═╡ 501049c5-239b-4b16-bd1b-406d5ed96ab2
 # ╠═╡ disabled = true
@@ -290,11 +313,12 @@ niwrite("BFC_time_series.nii",BFC_NIfTI)
 # ╔═╡ Cell order:
 # ╠═5b8d1c62-fc8f-11ec-202f-5f63a94bc6bf
 # ╠═6704f270-9d91-4d63-bf53-16e29c246605
+# ╠═8f178d20-c6c2-4e55-8bf4-9cb016b785ee
 # ╠═4ff856d5-de11-4876-acd4-7e48d88fa2fb
 # ╠═2c3bcfa6-1607-42cd-8ba3-53cf2f19c3fc
 # ╠═6116b291-ad7b-4191-9ec6-ce2fa0938121
 # ╠═462eed79-97b3-441a-ac9a-c70616acb166
-# ╠═5d9b4de4-7207-4f63-a8a3-b85f7823d736
+# ╟─5d9b4de4-7207-4f63-a8a3-b85f7823d736
 # ╠═b52d0c52-164a-4c75-a138-923d02869023
 # ╠═03771ec3-008b-4185-85fe-c498a5e60e66
 # ╠═1fce80c1-e747-4d19-997c-31400e8a864c
@@ -309,9 +333,9 @@ niwrite("BFC_time_series.nii",BFC_NIfTI)
 # ╠═e7172e60-f796-45d0-9e63-c4aefe37a45a
 # ╟─abd4e302-5be2-43e1-90f6-44f1ae3198b6
 # ╠═11e82358-e5e6-48d9-998a-7a01f1ebbb92
-# ╠═c02d0ede-4b74-41ac-844c-8746532d14d2
+# ╟─c02d0ede-4b74-41ac-844c-8746532d14d2
 # ╠═108254f4-12f8-478b-907f-43d996bfc6af
-# ╠═ef460365-6f17-43ba-9c3e-abdecb92ef0d
+# ╟─ef460365-6f17-43ba-9c3e-abdecb92ef0d
 # ╠═230f1a54-609e-4cf1-981c-174792780656
 # ╠═341eff6d-1a32-4aa3-a6f0-17bbe53997c4
 # ╠═5f1204b2-70be-42db-93a7-841a3bc81671
@@ -323,6 +347,7 @@ niwrite("BFC_time_series.nii",BFC_NIfTI)
 # ╠═9fcb4683-d76c-4f15-b3a5-63d0b2ba9dcc
 # ╠═f44507ee-501d-4a7d-8019-b314272b90bd
 # ╠═613decfa-c2c3-4426-af1a-4fb68e5839b5
+# ╠═d5cecab3-1d59-43bf-92fb-4084247a8e85
 # ╠═3afa8868-6834-4fd2-a76a-065ea531b3f1
 # ╠═d25ff77c-3b2d-4f0a-a798-83f12643e142
 # ╠═87b6f9b0-7a4f-4e0c-99ce-1f5adb65ce60

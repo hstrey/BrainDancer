@@ -74,7 +74,7 @@ phantom = niread("/Users/hstrey/Desktop/Phantom_talk/Phantom dataset/epi/epi.nii
 phantom_ok = phantom[2:end,:,:,1:200]
 
 # ╔═╡ bf538333-7ad8-417e-a998-0c6f4007d438
-phantom_static = niread("static_bfc.nii")
+phantom_static = niread("b_150_3.nii")
 
 # ╔═╡ a815b01b-2ff0-47fe-9a82-5906d69fdb03
 md"""
@@ -102,7 +102,7 @@ begin
 		aspect_ratio=1.0,
 		axis = nothing,
 		framestyle=:none,
-		title="first ok slice",
+		title="slice $pick_slice",
 		size=(400,450))
 	hline!([h],color=:red,label="horz $h")
 	vline!([v],color=:green,label="vert $v")
