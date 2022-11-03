@@ -65,6 +65,14 @@ Using a similar approach to the section above we can write:
 \includegraphics[width=0.3\textwidth]{ellipse.png}
 \caption{\label{fig:ellipse}heatmap of intensity distribution of ellipse of $r_{x}=1$, $r_{y}=2$ and $\theta=\pi/3$}
 \end{figure}
+\subsection{Angled cylinder}
+Here we discuss that there are two potential reasons why we see an ellipse.  The first reason is that if the cylinder is not perfectly
+aligned with the z-axis then we see the projection of a circle on a plane that is inclined by an angle $\alpha$.  There is also the possibility that the image is deformed by image distortion that is related to the MRI imaging process (edge effects).
 
+Let us first consider the first possiblity since it is mathematically rigorous.  To define the rotation axis we need four parameters: the point $(x_{0},y_{0})$ at $z=0$ and the two angles $(\alpha,\vartheta)$ that describe how the line crosses, where $\alpha$ is the angle of the line projected onto the $(x,y)$-plane, and $\vartheta$ is the angle of the line with respect to the z-axis.  $\vartheta$ is the angle of the cylinder with respect to the z-axis and a cylinder with radius $R$ is deformed into an ellipse with axis $R$ and $R/cos(\vartheta)$.
 
+Such a line can be written mathematically as:
+\begin{equation}
+(x(z),y(z)) = (z\cos(\vartheta)\cos(\alpha)+x_{0},z\cos(\vartheta)\sin(\alpha)+y_{0})
+\end{equation}
 \end{document}
