@@ -6,10 +6,26 @@ using ImageSegmentation
 
 maxvalue(d) = reduce((x, y) -> d[x] = d[y] ? x : y, keys(d))
 
-genimg(p::AbstractArray) = p ./ first(findmax(p))
+genimg(p::AbstractArray) = p ./ maximum(p)
+
+function genunitimg!(img, arr)
+    minval, maxval = extrema(arr)
+    diff = maxval-minval
+    broadcast!(x-> (x-minval)/diff, img, arr)
+end
 
 function getcoordinates(img)
     hcat(([i.I...] for i in findall(img .> 0))...)
+end
+
+function showsegments(segments)
+    imgs = []
+    for i in segments.segment_labels
+        img = Gray.(map(j-> j == i ? segment_mean(segments,i) : 1, labels_map(segments)))
+        pp = plot(img, title="S$i")
+        push!(imgs, pp)
+    end
+    plot(imgs...,layout=length(imgs),axis=nothing,framestyle=:none)
 end
 
 function fitellipse(xy::Matrix)
@@ -67,7 +83,7 @@ function canonical(params::Vector)
     x = (2*C*D-B*E)/(c1)
     y = (2*A*E-B*D)/(c1)
     θ = (C - A - c3)/B |> atan
-    [x, y, a, b, θ, rad2deg(θ)]
+    x, y, a, b, θ, rad2deg(θ)
 end
 
 function gaussellipse(xy,p)
@@ -96,7 +112,7 @@ function segment3(img::AbstractMatrix{T}) where {T}
 
     # inneter boundary segmentation of the image
     idxs = findall(labels_map(outsegs) .== 2)
-    in_seeds = [(idxs[1], 1), (idxs[end], 1),
+    in_seeds = [(idxs[1], 1), (idxs[10], 1), (idxs[end-10], 1), (idxs[end], 1),
                 (CartesianIndex(sz[1]>>1,sz[2]>>1), 2)]
     insegs = seeded_region_growing(img, in_seeds)
 
@@ -137,34 +153,120 @@ function prepare_initial_point(p::Vector)
     θ %= π
     θ = θ < 0 ? π + θ : θ
     # form initial solution
-    [x0, y0, a, b, θ, A, bg, σ]
+    [x0, y0, a, b, θ, (A < 0 ? 0.0 : A), bg, abs(σ)]
 end
 
-function fitellipse3(img::AbstractMatrix{T}, segs::SegmentedImage,
-                     edge::Matrix{Bool}) where {T}
+function fitellipse3(img::AbstractMatrix{T}, segs::SegmentedImage, edge::Matrix{Bool};
+                     verbose=true, keepinitialonerror=true, secondfit=true) where {T}
+    r,c = size(img)
     # find ecllipse in edge
     coords = hcat(([i.I...] for i in findall(edge))...)
-    E = fitellipsedirect(coords) |> canonical
-    @debug "Initial fit" E
+    E1 = fitellipsedirect(coords) |> canonical
+    verbose && @debug "Initial fit" E1
 
     # get all points within the outer boundry
     coords2 = hcat(([ci.I...] for ci in findall(labels_map(segs) .!= 1))...)
     z = [img[x,y] for (x,y) in eachcol(coords2)]
-    lb = [0.0, 0.0, 0.0, 0.0, -π, 0, 0, 0]
-    ub = [Inf, Inf, Inf, Inf, π, Inf, Inf, 1]
 
     # refine ellipse paramaters using outer segment points
     # and edge ellipse estimate
-    p0 = prepare_initial_point([E[1:5]..., extrema(z)..., 0.01])
-    fit = curve_fit(gaussellipse, coords2', z, p0)
+    p0 = prepare_initial_point([E1[1:5]..., extrema(z)..., 0.01])
+    fit = curve_fit(gaussellipse, coords2', z, p0, autodiff=:forwarddiff)
     E = fit.param
-    @debug "LSQ fit 1" p0 E
+    verbose && @debug "LSQ fit 1" p0 E
 
     # refine again
+    # lb = [0.0, 0.0, 0.0, 0.0, -π, 0, 0, 0.001]
+    # ub = [Inf, Inf, Inf, Inf, π, Inf, Inf, 1]
+    lb = [c/2-3.0, r/2-3.0, 0.0, 0.0, -π,   0,   0, 0.001]
+    ub = [c/2+3.0, r/2+3.0, Inf, Inf,  π, Inf, Inf, 1.000]
     p0 = prepare_initial_point(E)
-    fit = curve_fit(gaussellipse, coords2', z, p0, lower=lb, upper=ub)
-    E = fit.param
-    @debug "LSQ fit 2" p0 E
+    E = try
+        if secondfit
+            fit = curve_fit(gaussellipse, coords2', z, p0, lower=lb, upper=ub, autodiff=:forwarddiff)
+            fit.param
+        else
+            p0
+        end
+    catch ex
+        p0 = prepare_initial_point([E1[1:5]..., minimum(z), maximum(z)/2, 0.01])
+        if keepinitialonerror
+            p0
+        else
+            @debug "Error. Trying with constraints." p0
+            fit = curve_fit(gaussellipse, coords2', z, p0, lower=lb, upper=ub)
+            fit.param
+        end
+    end
+    verbose && secondfit && @debug "LSQ fit 2" p0 E
 
     return E
+end
+
+function getellipse(img::AbstractMatrix, verbose=true)
+    segs = segment3(img)
+    fitellipse3(img, segs, edge3(segs); verbose)
+end
+
+function fitellipse3d(imgs::AbstractArray, mask::BitArray, edge::Matrix{Int};
+                     verbose=true, keepinitialonerror=true, secondfit=true)
+    r,c,h = size(imgs)
+    # find ecllipse in edge
+    coords = hcat(([i.I...] for i in findall(edge.>0))...)
+    E1 = fitellipsedirect(coords) |> canonical
+    verbose && @debug "Initial fit" E1
+
+    # get all points within the outer boundry
+    idxs = findall(mask)
+    coords2 = hcat(([ci.I...] for ci in idxs)...)
+    z = @view imgs[idxs]
+
+    # refine ellipse paramaters using outer segment points
+    # and edge ellipse estimate
+    p0 = prepare_initial_point([E1[1:5]..., extrema(z)..., 0.01])
+    fit = curve_fit(gaussellipse, coords2', z, p0, autodiff=:forwarddiff)
+    E = fit.param
+    verbose && @debug "LSQ fit 1" p0 E
+
+    # refine again
+    # lb = [0.0, 0.0, 0.0, 0.0, -π, 0, 0, 0.001]
+    # ub = [Inf, Inf, Inf, Inf, π, Inf, Inf, 1]
+    lb = [c/2-3.0, r/2-3.0, 0.0, 0.0, -π,   0,   0, 0.001]
+    ub = [c/2+3.0, r/2+3.0, Inf, Inf,  π, Inf, Inf, 1.000]
+    p0 = prepare_initial_point(E)
+    E = try
+        if secondfit
+            fit = curve_fit(gaussellipse, coords2', z, p0, lower=lb, upper=ub, autodiff=:forwarddiff)
+            fit.param
+        else
+            p0
+        end
+    catch ex
+        p0 = prepare_initial_point([E1[1:5]..., minimum(z), maximum(z)/2, 0.01])
+        if keepinitialonerror
+            p0
+        else
+            @debug "Error. Trying with constraints." p0
+            fit = curve_fit(gaussellipse, coords2', z, p0, lower=lb, upper=ub)
+            fit.param
+        end
+    end
+    verbose && secondfit && @debug "LSQ fit 2" p0 E
+
+    return E
+end
+
+function gaussellipse3d(xyz,p)
+    x0,y0,rx,ry,θ,A,bg,σ = p #unpack parameters
+    dx = view(xyz, :, 1) .- x0
+    dy = view(xyz, :, 2) .- y0
+    ct = cos(θ)
+    st = sin(θ)
+    return bg .- A * exp.( -(1 .-sqrt.(( dx .* ct .+ dy .* st ).^2/rx^2+(dx .* st .- dy .* ct).^2/ry^2)).^2/σ^2)
+end
+
+function getellipse3d(imgs::AbstractArray; verbose=true, secondfit=true)
+    segs = segment3.(eachslice(imgs, dims=3))
+    mask = cat(labels_map.(segs)..., dims=3) .!= 1
+    fitellipse3d(imgs, mask, sum(edge3.(segs)); verbose, secondfit)
 end
