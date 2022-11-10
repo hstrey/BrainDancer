@@ -87,7 +87,7 @@ function canonical(params::Vector)
 end
 
 function gaussellipse(xy,p)
-    x0,y0,rx,ry,θ,A,bg,σ = p #unpack parameters
+    x0,y0,rx,ry,θ,a,A,bg,σ = p #unpack parameters
     x = xy[:,1]
     y = xy[:,2]
     dx = x .- x0
@@ -143,7 +143,7 @@ end
 Create an initial solution for fitting optimization problem
 """
 function prepare_initial_point(p::Vector)
-    x0, y0, a, b, θ, A, bg, σ = p
+    x0, y0, a, b, θ, α, A, bg, σ = p
     # flip axes so a > b
     dont_flip = a > b
     a, b = dont_flip ? (a,b) : (b,a)
@@ -153,7 +153,7 @@ function prepare_initial_point(p::Vector)
     θ %= π
     θ = θ < 0 ? π + θ : θ
     # form initial solution
-    [x0, y0, a, b, θ, (A < 0 ? 0.0 : A), bg, abs(σ)]
+    [x0, y0, a, b, θ, α, (A < 0 ? 0.0 : A), bg, abs(σ)]
 end
 
 function fitellipse3(img::AbstractMatrix{T}, segs::SegmentedImage, edge::Matrix{Bool};
@@ -170,16 +170,14 @@ function fitellipse3(img::AbstractMatrix{T}, segs::SegmentedImage, edge::Matrix{
 
     # refine ellipse paramaters using outer segment points
     # and edge ellipse estimate
-    p0 = prepare_initial_point([E1[1:5]..., extrema(z)..., 0.01])
+    p0 = prepare_initial_point([E1[1:5]..., 0, extrema(z)..., 0.01])
     fit = curve_fit(gaussellipse, coords2', z, p0, autodiff=:forwarddiff)
     E = fit.param
     verbose && @debug "LSQ fit 1" p0 E
 
     # refine again
-    # lb = [0.0, 0.0, 0.0, 0.0, -π, 0, 0, 0.001]
-    # ub = [Inf, Inf, Inf, Inf, π, Inf, Inf, 1]
-    lb = [c/2-3.0, r/2-3.0, 0.0, 0.0, -π,   0,   0, 0.001]
-    ub = [c/2+3.0, r/2+3.0, Inf, Inf,  π, Inf, Inf, 1.000]
+    lb = [c/2-3.0, r/2-3.0, 0.0, 0.0, -π, -π/2,   0,   0, 0.001]
+    ub = [c/2+3.0, r/2+3.0, Inf, Inf,  π,  π/2, Inf, Inf, 1.000]
     p0 = prepare_initial_point(E)
     E = try
         if secondfit
@@ -189,7 +187,7 @@ function fitellipse3(img::AbstractMatrix{T}, segs::SegmentedImage, edge::Matrix{
             p0
         end
     catch ex
-        p0 = prepare_initial_point([E1[1:5]..., minimum(z), maximum(z)/2, 0.01])
+        p0 = prepare_initial_point([E1[1:5]..., 0, minimum(z), maximum(z)/2, 0.01])
         if keepinitialonerror
             p0
         else
@@ -203,9 +201,25 @@ function fitellipse3(img::AbstractMatrix{T}, segs::SegmentedImage, edge::Matrix{
     return E
 end
 
-function getellipse(img::AbstractMatrix, verbose=true)
+function getellipse(img::AbstractArray; verbose=true)
     segs = segment3(img)
     fitellipse3(img, segs, edge3(segs); verbose)
+end
+
+function gaussellipse3d(xyz, p)
+    x0,y0,rx,ry,θ,α,A,bg,σ = p #unpack parameters
+	ct, st = cos(θ), sin(θ)
+	c1, c2 = ct*cos(α), ct*sin(α)
+	# xc = z->z.*cos(θ).*cos(α).+x0
+	# yc = z->z.*cos(θ).*sin(α).+y0
+	# dx = map(r->r[1]-r[3]*c1+x0, eachrow(xyz))
+	# dy = map(r->r[2]-r[3]*c2+y0, eachrow(xyz))
+	# dx = view(xyz, :, 1) .- xc(view(xyz, :, 3))
+    # dy = view(xyz, :, 2) .- yc(view(xyz, :, 3))
+	dxy = hcat(([i-k*c1+x0, j-k*c2+y0] for (i,j,k) in eachcol(xyz))...)
+	dx = view(dxy, 1, :)
+    dy = view(dxy, 2, :)
+    return bg .- A * exp.( -(1 .-sqrt.(( dx .* ct .+ dy .* st ).^2/rx^2+(dx .* st .- dy .* ct).^2/ry^2)).^2/σ^2)
 end
 
 function fitellipse3d(imgs::AbstractArray, mask::BitArray, edge::Matrix{Int};
@@ -223,46 +237,36 @@ function fitellipse3d(imgs::AbstractArray, mask::BitArray, edge::Matrix{Int};
 
     # refine ellipse paramaters using outer segment points
     # and edge ellipse estimate
-    p0 = prepare_initial_point([E1[1:5]..., extrema(z)..., 0.01])
-    fit = curve_fit(gaussellipse, coords2', z, p0, autodiff=:forwarddiff)
+    mmz = extrema(z)
+    p0 = prepare_initial_point([E1[1:5]..., π/40, mmz..., 0.01])
+    fit = curve_fit(gaussellipse3d, coords2, z, p0, autodiff=:forwarddiff)
     E = fit.param
     verbose && @debug "LSQ fit 1" p0 E
 
     # refine again
-    # lb = [0.0, 0.0, 0.0, 0.0, -π, 0, 0, 0.001]
-    # ub = [Inf, Inf, Inf, Inf, π, Inf, Inf, 1]
-    lb = [c/2-3.0, r/2-3.0, 0.0, 0.0, -π,   0,   0, 0.001]
-    ub = [c/2+3.0, r/2+3.0, Inf, Inf,  π, Inf, Inf, 1.000]
+    lb = [c/2-3.0, r/2-3.0, 0.0, 0.0, -π, -π/2,   0,   0, 0.001]
+    ub = [c/2+3.0, r/2+3.0, Inf, Inf,  π,  π/2, Inf, Inf, 1.000]
     p0 = prepare_initial_point(E)
     E = try
         if secondfit
-            fit = curve_fit(gaussellipse, coords2', z, p0, lower=lb, upper=ub, autodiff=:forwarddiff)
+            fit = curve_fit(gaussellipse3d, coords2, z, p0, lower=lb, upper=ub, autodiff=:forwarddiff)
             fit.param
         else
             p0
         end
     catch ex
-        p0 = prepare_initial_point([E1[1:5]..., minimum(z), maximum(z)/2, 0.01])
+        p0 = prepare_initial_point([E1[1:5]..., 0, mmz[1], mmz[2]/2, 0.01])
         if keepinitialonerror
             p0
         else
             @debug "Error. Trying with constraints." p0
-            fit = curve_fit(gaussellipse, coords2', z, p0, lower=lb, upper=ub)
+            fit = curve_fit(gaussellipse3d, coords2, z, p0, lower=lb, upper=ub)
             fit.param
         end
     end
     verbose && secondfit && @debug "LSQ fit 2" p0 E
 
     return E
-end
-
-function gaussellipse3d(xyz,p)
-    x0,y0,rx,ry,θ,A,bg,σ = p #unpack parameters
-    dx = view(xyz, :, 1) .- x0
-    dy = view(xyz, :, 2) .- y0
-    ct = cos(θ)
-    st = sin(θ)
-    return bg .- A * exp.( -(1 .-sqrt.(( dx .* ct .+ dy .* st ).^2/rx^2+(dx .* st .- dy .* ct).^2/ry^2)).^2/σ^2)
 end
 
 function getellipse3d(imgs::AbstractArray; verbose=true, secondfit=true)
