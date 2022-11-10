@@ -78,14 +78,17 @@ staticEs = let n = sz[3], res = zeros(9,n)
 	res
 end
 
+# ╔═╡ c3b152da-97da-42b3-93e7-a769a9b751c3
+plot(staticEs[1,:], label="x0")
+
+# ╔═╡ 6fed789f-c68f-48d7-8ef8-a10d1dfce7dd
+plot(staticEs[2,:], label="y0")
+
 # ╔═╡ a9484fa6-cff7-4630-a6c3-888883c36758
 md"**Fit ellipse for averaged Z-slices**"
 
 # ╔═╡ 877fda1b-6a18-47d2-a312-1ba58183db33
 avgstaticE = mean(staticEs; dims=2) |>vec
-
-# ╔═╡ f00077ee-1256-4ed3-a5c3-c7f8d3f4a448
-staticE[5:6], rad2deg.(staticE[5:6]), π/40
 
 # ╔═╡ 1ca425e8-8a91-44f7-baa6-eed2c176e1ec
 md"""
@@ -225,8 +228,8 @@ phantom_itp = let (r,c,h) = size(staticimgs),
 end;
 
 # ╔═╡ cf938c35-3843-4fe2-a6f8-be3381f39141
-let actcc = cc[3],
-	intcc = round.(Int, actcc)
+# Test interpolation
+let actcc = cc[3], intcc = round.(Int, actcc)
 	v1 = staticimgs[intcc...]
 	@info "Actual" intcc v1
 	v2 = phantom_itp(actcc...)
@@ -266,12 +269,6 @@ staticE = let imgs = staticimgs
 	mask = seglbls .!= 1 # outer cylinder
 	edge1 =dropdims(sum(seglbls .== 3, dims=3), dims=3)
 	edge2 = sum(edge3.(segs))
-	# edge2 = (edge3.(segs))[13] .+ 0
-	# edge3.(segs)
-	# mask[20:40, 20:40,1]
-	edge2
-	# findall(edge1.>0), findall(edge2.>0)
-    # fitellipse3d(imgs, mask, edge1)
 	fitellipse3d(imgs, mask, edge2)
 end
   ╠═╡ =#
@@ -1972,11 +1969,12 @@ version = "1.4.1+0"
 # ╟─919d2a18-1c0a-4d4d-a29c-7b50e10549fa
 # ╟─006cc58c-411c-4fb2-b219-45a86df742d8
 # ╟─868be102-6d42-4e71-94df-c8486558cc53
+# ╠═c3b152da-97da-42b3-93e7-a769a9b751c3
+# ╠═6fed789f-c68f-48d7-8ef8-a10d1dfce7dd
 # ╟─a9484fa6-cff7-4630-a6c3-888883c36758
 # ╠═0ae71151-4231-44c9-8fc6-67b917bbdec4
 # ╠═13a8d408-4d2a-4efc-82eb-aa5a7f26f14c
 # ╠═877fda1b-6a18-47d2-a312-1ba58183db33
-# ╠═f00077ee-1256-4ed3-a5c3-c7f8d3f4a448
 # ╟─1ca425e8-8a91-44f7-baa6-eed2c176e1ec
 # ╟─38e41da3-fdc1-4221-81c6-69de56162066
 # ╟─c44b8eaf-ca99-47f8-9533-4ac986c3c4ec
