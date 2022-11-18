@@ -28,7 +28,7 @@ begin
 	using CoordinateTransformations, Rotations
 	using Statistics
 	using LinearAlgebra, LsqFit, Interpolations
-	using DataFrames
+	using DataFrames, CSV
 	const ITI = ImageTransformations.Interpolations
 end
 
@@ -45,6 +45,10 @@ phantom_ts = niread(joinpath(DATA_DIR, "BFC_time_series.nii"));
 
 # ╔═╡ 15ed4afa-3339-4938-b647-a6403ab90078
 sz = size(phantom_ts)
+
+# ╔═╡ ac243c5f-dcc8-4b1e-b63f-0cb96bb6f6d6
+# valid range for the volume
+zs = 1:sz[3] #-1
 
 # ╔═╡ 92d88bd4-c8e5-4167-bc40-011b44d3d021
 # Setup visualization params
@@ -71,9 +75,9 @@ md"**Fit ellipse for *every* averaged Z-slice**"
 
 # ╔═╡ 868be102-6d42-4e71-94df-c8486558cc53
 # get ellipse parameters over averaged statis volume
-staticEs = let n = sz[3], res = zeros(9,n-2)	
-	for i in 2:n-1
-		res[:,i-1] = getellipse(view(staticimgs,:,:,i), verbose=false)
+staticEs = let res = zeros(9,length(zs))	
+	for i in zs
+		res[:,i] = getellipse(view(staticimgs,:,:,i), verbose=false)
 	end
 	res
 end
@@ -84,102 +88,51 @@ plot(staticEs[1,:], label="x0")
 # ╔═╡ 6fed789f-c68f-48d7-8ef8-a10d1dfce7dd
 plot(staticEs[2,:], label="y0")
 
+# ╔═╡ 497edfd4-8c69-41cd-a9fb-35a3cf35c23b
+md"**Fit line through the slices' centers & determine a deviation angle from `z`-axis**"
+
+# ╔═╡ 4e003878-246b-46ff-8496-eff08b3a0596
+lineparams = let data = staticEs[1:2,2:end-1] # use slices from 2 to 12
+	μ = mean(data, dims=2)
+	F = svd(data .- μ)
+	dir = vec(F.U[1,:])
+	vec(μ), dir, dir[2]/dir[1] # mean, direction, slope
+end
+
+# ╔═╡ 60657161-9d68-43b8-8f69-20489a76f786
+md"**Calculate transformation parameters for phantom data generation**"
+
+# ╔═╡ 4a1290c6-ea27-4851-b4e6-3a8956b527b4
+# A deviation angle from z-axis
+θ = let r = π/2-atan(lineparams[3])
+	@info "Degree" d=rad2deg(r)
+	r
+end
+
+# ╔═╡ fc457183-7e42-4da7-96c0-34815234a8da
+# A rotation angle within xy-plain
+αs = staticEs[5,:]
+
+# ╔═╡ 2e28a4f2-096a-4257-87cf-e91ef9469786
+# An adjusted ellipse centers of the each slice
+centers = let α = mean(αs),
+			  rng = -1:0.15:1.0,
+		      cc = staticEs[1:2,:],
+			  # xc = (x0,z)->z.*cos(θ).*cos(αs[z]).+x0,
+			  # yc = (y0,z)->z.*cos(θ).*sin(αs[z]).+y0
+		      xc = (x0,z)->z.*cos(θ).*cos(α).+x0,
+			  yc = (y0,z)->z.*cos(θ).*sin(α).+y0
+	# hcat([[xc(x,z/14), yc(y,z/14)] for (z,(x,y)) in enumerate(eachcol(cc))]...)
+	hcat([[xc(x,z), yc(y,z)] for (z,(x,y)) in zip(rng, eachcol(cc))]...)	
+	# xy = lineparams[1] .+ lineparams[2].*rng'
+end
+
 # ╔═╡ 5416e834-2d41-4c5c-b0bf-dadb9eb9af3c
-plot(staticEs[1,:], staticEs[2,:])
-
-# ╔═╡ a9484fa6-cff7-4630-a6c3-888883c36758
-md"**Fit ellipse for averaged Z-slices**"
-
-# ╔═╡ 877fda1b-6a18-47d2-a312-1ba58183db33
-avgstaticE = mean(staticEs; dims=2) |>vec
-
-# ╔═╡ 1ca425e8-8a91-44f7-baa6-eed2c176e1ec
-md"""
-Preview parameters:
-- Slice #: $(@bind sliceid html"<input type=number min=1 max=13 value=1></input>")
-"""
-
-# ╔═╡ 38e41da3-fdc1-4221-81c6-69de56162066
-let img = staticimgs[:,:,sliceid]
-	# segment image
-	seg = segment3(img)
-	simg = map(i->i-1, labels_map(seg))
-	xo, yo, a, b, θ, _  = staticE
-	xα = (α) -> a*cos(α)*cos(θ) - b*sin(α)*sin(θ) + xo
-	yα = (α) -> a*cos(α)*sin(θ) + b*sin(α)*cos(θ) + yo
-	# show center
-	img[round.(Int, (xo, yo))...] = 0
-	simg[round.(Int, (xo, yo))...] = 0
-	# show ellipse
-	for (x,y) in [round.(Int, (xα(t), yα(t))) for t in 0:0.1:2π]
-		img[x,y] = 25500
-		simg[x,y] = 0
-	end
-	# show image	
-	pseg = plot(Gray.(genimg(simg)), aspect_ratio=1.0, axis=nothing, framestyle=:none, title="segments",)
-	pimg = plot(Gray.(genimg(img)), aspect_ratio=1.0, axis=nothing, framestyle=:none, title="img #$sliceid", size=(300,350))
-	plot(pimg, pseg)
-end
-
-# ╔═╡ c44b8eaf-ca99-47f8-9533-4ac986c3c4ec
-md"**Calculate ellipse paramaters for each volume in the dynamic series**"
-
-# ╔═╡ d1308e8a-c995-40d1-92b5-095cbd27b70b
-Es = let n = sz[end],
-	df = DataFrame(:x₀=>Float64[], :y₀=>Float64[],
-				   :a=>Float64[], :b=>Float64[],
-				   :θ=>Float64[], :α=>Float64[],
-			       :A=>Float64[], :bg=>Float64[], :σ=>Float64[])
-	img = similar(view(phantom_ts,:,:,:,1))
-	for i in 201:301 #n
-		genunitimg!(img, view(phantom_ts,:,:,:,i))
-		e = getellipse3d(img, verbose=false, secondfit=true)
-		push!(df, e)
-	end
-	df
-end
-
-# ╔═╡ 0fec31ee-b3e8-45bf-b933-1c24fcca0687
-md"**Show ellipses stats**"
-
-# ╔═╡ a049f76b-a7f8-4948-a85c-45a582a588a4
-md"Remove defect fittings"
-
-# ╔═╡ 9c68423f-44ee-4e4d-bfb9-b8d516e1a0c4
-defectidxs = findall(Es.a .< 0 .|| Es.b .< 0) # .|| Es.A .== 0)
-
-# ╔═╡ e864a90f-13ab-436e-b90f-0a6da9320f33
-idxs = [i for i in 1:nrow(Es) if i ∉ defectidxs]
-
-# ╔═╡ 10e0dc44-a3bc-42b1-a8ec-2d4a73e6d99d
-# remove defect fittings
-dynamicE = Es[idxs, :];
-
-# ╔═╡ f3965ae5-a0ae-4d47-87ef-91d9dc9a874d
-describe(dynamicE)
-
-# ╔═╡ 46deb0e5-081f-47ae-92af-f64f4a2a218c
-# @df df plot([:x₀, :y₀.+1.4], labels=["x₀" "y₀+1.4"], legend=:topleft)
-let p = plot(dynamicE.x₀, labels="x₀", legend=:topleft, title="Ellipse Center", right_margin=1.2cm)
-	plot!(p, fill(staticE[1],1:length(idxs)), color=:red, label="static x₀")
-	q = twinx(p)
-	plot!(q, dynamicE.y₀, color=:green, labels="y₀")
-	plot!(q, fill(staticE[2],1:length(idxs)), color=:orange, label="static y₀")
-end
-
-# ╔═╡ 25387dd5-9a6f-46a1-b09a-9f8828795363
-# @df df plot([:a, :b.+0.62], labels=["a" "b+0.62"], legend=:topleft)
-let p = plot(dynamicE.a, labels="a", legend=:topleft, title="Ellipse Axes", right_margin=1.2cm)
-	plot!(p, fill(staticE[3],1:length(idxs)), color=:red, label="static a")
-	q = twinx(p)
-	plot!(q, dynamicE.b, color=:green, labels="b")
-	plot!(q, fill(staticE[4],1:length(idxs)), color=:orange, label="static b")
-end
-
-# ╔═╡ e56b77f9-b4e6-414e-ac14-7558ae8d80ff
-
-let p = @df dynamicE plot(:θ, labels="θ", legend=:topleft, title="Ellipse Rotation")
-	plot!(p, fill(staticE[5],1:length(idxs)), color=:red, label="static θ")
+let x = staticEs[1,:], y=staticEs[2,:], rng=collect(-1:0.15:1.)
+	p = scatter(x, y, label="centers", legend=:bottomright)
+	xy = lineparams[1] .+ lineparams[2].*rng'
+	plot!(p, xy[1,:], xy[2,:], label="fit")	
+	plot!(p, centers[1,:], centers[2,:], label="sim")
 end
 
 # ╔═╡ e6deda84-ff89-4998-852d-cbf752d98936
@@ -199,21 +152,20 @@ end
 
 # ╔═╡ 8bb2090f-6ef8-445b-bca8-e124293bc459
 """
-	rotatevoxel(SEs::Matrix) -> f(x,y,z,θ)
+	rotatevoxel(o::Vector, p::Vector) -> f(x,y,z,θ)
 
-Return a function that perform rotation of the voxel with coordinates `(x,y,z)` on the angle `θ` within XY-plane.
+Return a function that perform rotation of the voxel with coordinates `(x,y,z)` on the angle `θ` within XY-plane around the line started in an origin point `o` and passing through a point `p`.
 """
-function rotatevoxel(SEs)
-	origin = [SEs[:,1][1:2]; 1]
-	last = [SEs[:,2][1:2]; size(SEs,3)]
-	dir = origin .- last |> normalize	
+function rotatevoxel(origin, p)
+	dir = p .- origin |> normalize	
 	(x,y,z,θ) -> rotate(x, y, z, origin..., dir..., θ)
 end
 
 # ╔═╡ 3ff8e722-ec91-4751-bff6-e076599d2855
-# Test rotation
-cc = let iidxs = (43, 43, 13), θ = staticEs[5]
-	rvfn = rotatevoxel(staticEs) # create rotation function
+cc = let iidxs = (43, 43, 1), θ = staticEs[5],
+		 origin = [staticEs[:,1][1:2]; 1],
+		 last = [staticEs[:,2][1:2]; sz[3]]
+	rvfn = rotatevoxel(origin, last) # create rotation function
 	cc = rvfn(iidxs..., θ)       # rotate coordinates
 	iidxs, θ, cc
 end
@@ -239,10 +191,28 @@ let actcc = cc[3], intcc = round.(Int, actcc)
 	@info "Interpolated" actcc v2
 end
 
+# ╔═╡ 0a597747-f5cd-40c5-a9a4-7005a34f6b94
+md"**Load rotation data of dynamic phase**"
+
+# ╔═╡ 2b3701ed-c053-4658-b693-f58cd565d699
+df = CSV.read(joinpath(DATA_DIR, "epi",  "log.csv"), DataFrame);
+
+# ╔═╡ c33d2d8f-abc9-4186-9b33-0af1a3508455
+firstrotidx = findfirst(e->e>20, df.CurPos)
+
+# ╔═╡ b1e37158-a0ca-4556-ab11-4beafd0e0ee5
+# rotation angles in radians
+angles = let quant = 2^13	
+	[a > π ? a-2π : a  for a in (df.CurPos[firstrotidx:end] ./ quant).*(2π)]
+end
+
+# ╔═╡ 4dab67c1-b204-42fb-a621-06db4fb4ae11
+plot(angles, ylab="α")
+
 # ╔═╡ 1557be9b-2a83-45a1-9b81-ce72f27ba64c
 md"**Generate intensities from the static avarage by rotating to an angle of a rotation of a dynamic slice**"
 
-# ╔═╡ 360de0f7-aa53-4eda-902b-f0b8d3fd1f1e
+# ╔═╡ d59ccb58-f737-4b46-be43-ab6cc46679cc
 md"""
 Coordinates:
 - X: $(@bind x html"<input type=number min=1 max=83 value=42></input>")
@@ -251,34 +221,79 @@ Coordinates:
 """
 
 # ╔═╡ 39ddb2af-3643-45ff-b8f0-f8c8e09bcbc7
-let θs = dynamicE.θ, # rotation angles of dynamic volumes
-			rvfn = rotatevoxel(staticEs), # create rotation function			
-			res = zeros(length(θs))
+let θs = angles, # rotation angles of dynamic volumes
+	rvfn = rotatevoxel([centers[:,2]; 1], [centers[:,12]; 13]) # create rotation function		
 	sim = [phantom_itp(rvfn(x, y, z, θ)...) for (i,θ) in enumerate(θs)]
-	p = plot(sim, label="sim($x, $y, $z)", legend=:right)
-	acc = phantom_ts[x,y,z,idxs.+200]
-	plot!(acc, label="actual")
+	p = plot(sim, label="sim($x, $y, $z)", legend=:topright)
+	acc = phantom_ts[x,y,z,firstrotidx:end]
+	plot!(p, acc, label="actual")
+	stat = staticimgs[x,y,z]
+	plot!(p, [1,length(θs)],[stat,stat], label="static avg")
 end
 
-# ╔═╡ 13a8d408-4d2a-4efc-82eb-aa5a7f26f14c
-staticE = getellipse3d(staticimgs)
-
-# ╔═╡ 0ae71151-4231-44c9-8fc6-67b917bbdec4
-# ╠═╡ disabled = true
-#=╠═╡
-staticE = let imgs = staticimgs
-	segs = segment3.(eachslice(imgs, dims=3))
-	seglbls = cat(labels_map.(segs)..., dims=3)
-	mask = seglbls .!= 1 # outer cylinder
-	edge1 =dropdims(sum(seglbls .== 3, dims=3), dims=3)
-	edge2 = sum(edge3.(segs))
-	fitellipse3d(imgs, mask, edge2)
+# ╔═╡ ea1bcfbb-a214-4acc-9242-08fd1d867d75
+begin
+	@info "Actual" intencity=staticimgs[x,y,z]
+	@info "Interpolated" intencity=phantom_itp(x,y,z)
 end
-  ╠═╡ =#
+
+# ╔═╡ 5901e7fc-9c1d-46f1-8c93-128106e974a5
+md"**Generate simulated image**"
+
+# ╔═╡ a56278b4-9b95-4a5a-aaa8-3e15a83db5bc
+"""
+	simulated_coordinates(sz::Tuple, a::Vector, b::Vector, θ::Float64)
+
+Generate simulated coordinate set of size `sz` by rotating voxels within
+*xy*-plain on angle `θ` around the line passing through points `a` and `b`.
+"""
+function simulated_coordinates(sz::Tuple, a, b, θ::Float64)
+	rvfn = rotatevoxel(a, b) # create rotation function
+	[rvfn(i,j,k,θ) for i in 1:sz[1], j in 1:sz[2], k in 1:sz[3]]
+end
+
+# ╔═╡ 6b16b27d-0dfe-4900-bcf5-efa806ce509c
+"""
+	simulated_coordinates_at_z(sz::Tuple, z, a::Vector, b::Vector, θ::Float64)
+
+Generate simulated coordinate set of size `sz` at depth `z`, by rotating voxels within
+*xy*-plain on angle `θ` around the line passing through points `a` and `b`.
+"""
+function simulated_coordinates_at_z(sz::Tuple, z, a, b, θ::Float64)
+	rvfn = rotatevoxel(a, b) # create rotation function
+	[rvfn(i,j,z,θ) for i in 1:sz[1], j in 1:sz[2]]
+end
+
+# ╔═╡ bacd2be5-c44b-4c2e-9660-7d7890ac7a01
+md"""
+Generate image from an avarage volume slice `Z` by rotating it at an angle `θ` ∈ [-π,π].
+
+Slice (Z): $(@bind sliceId html"<input type=number min=1 max=13 value=1></input>")
+Rotation angle (θ): $(@bind theta html"<input type=number min=-180 max=180 value=0></input>")
+"""
+
+# ╔═╡ 11841d64-1d44-4886-9b0e-7eadaa2b8da8
+let θ = deg2rad(theta)
+	# cc = staticEs[1:2,:]          # ellipese centers from static average
+	cc = centers                    # simulated centers
+	a = [cc[:,2]; 1]                # line from static average ellipse centers
+	b = [cc[:,end-1]; 13]
+	# generate image
+	coords = simulated_coordinates_at_z(sz, sliceId, a, b, θ)
+	sim = map(c->phantom_itp(c...), coords)
+	gen = Gray.(sim |> genimg)
+	# show averaged image	
+	ave = Gray.(staticimgs[:,:,sliceId] |> genimg)
+	pave = plot(ave, aspect_ratio=1.0, axis=nothing, framestyle=:none, title="img z=$sliceId", size=(300,350))
+	# show generated image
+	pgen = plot(gen, aspect_ratio=1.0, axis=nothing, framestyle=:none, title="generated at $theta")
+	plot(pave, pgen)	
+end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
 [deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 Colors = "5ae59095-9a9b-59fe-a467-6f913c188581"
 CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
@@ -296,6 +311,7 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
 
 [compat]
+CSV = "~0.10.7"
 Colors = "~0.12.8"
 CoordinateTransformations = "~0.6.2"
 DataFrames = "~1.4.1"
@@ -317,7 +333,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.8.1"
 manifest_format = "2.0"
-project_hash = "023feddd99cf9f2d623b1120d07b70fe7410577a"
+project_hash = "818387bb269794e54ff04deba9b6e3307d6b2df9"
 
 [[deps.AbstractFFTs]]
 deps = ["ChainRulesCore", "LinearAlgebra"]
@@ -392,6 +408,12 @@ version = "1.0.8+0"
 git-tree-sha1 = "eb4cb44a499229b3b8426dcfb5dd85333951ff90"
 uuid = "fa961155-64e5-5f13-b03f-caf6b980ea82"
 version = "0.4.2"
+
+[[deps.CSV]]
+deps = ["CodecZlib", "Dates", "FilePathsBase", "InlineStrings", "Mmap", "Parsers", "PooledArrays", "SentinelArrays", "Tables", "Unicode", "WeakRefStrings"]
+git-tree-sha1 = "c5fd7cd27ac4aed0acf4b73948f0110ff2a854b2"
+uuid = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+version = "0.10.7"
 
 [[deps.Cairo_jll]]
 deps = ["Artifacts", "Bzip2_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Pkg", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
@@ -636,6 +658,12 @@ deps = ["Pkg", "Requires", "UUIDs"]
 git-tree-sha1 = "7be5f99f7d15578798f338f5433b6c432ea8037b"
 uuid = "5789e2e9-d7fb-5bc7-8068-2c6fae9b9549"
 version = "1.16.0"
+
+[[deps.FilePathsBase]]
+deps = ["Compat", "Dates", "Mmap", "Printf", "Test", "UUIDs"]
+git-tree-sha1 = "e27c4ebe80e8699540f2d6c805cc12203b614f12"
+uuid = "48062228-2e41-5def-b9a4-89aafe57970f"
+version = "0.9.20"
 
 [[deps.FileWatching]]
 uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
@@ -885,6 +913,12 @@ version = "0.1.3"
 git-tree-sha1 = "f550e6e32074c939295eb5ea6de31849ac2c9625"
 uuid = "83e8ac13-25f8-5344-8a64-a9f2b223428f"
 version = "0.5.1"
+
+[[deps.InlineStrings]]
+deps = ["Parsers"]
+git-tree-sha1 = "b5081bd8a53eeb6a2ef956751343ab44543023fb"
+uuid = "842dd82b-1e85-43dc-bf29-5d0ee9dffc48"
+version = "1.3.1"
 
 [[deps.IntegralArrays]]
 deps = ["ColorTypes", "FixedPointNumbers", "IntervalSets"]
@@ -1403,9 +1437,9 @@ version = "1.0.0"
 
 [[deps.Qt5Base_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "Fontconfig_jll", "Glib_jll", "JLLWrappers", "Libdl", "Libglvnd_jll", "OpenSSL_jll", "Pkg", "Xorg_libXext_jll", "Xorg_libxcb_jll", "Xorg_xcb_util_image_jll", "Xorg_xcb_util_keysyms_jll", "Xorg_xcb_util_renderutil_jll", "Xorg_xcb_util_wm_jll", "Zlib_jll", "xkbcommon_jll"]
-git-tree-sha1 = "c6c0f690d0cc7caddb74cef7aa847b824a16b256"
+git-tree-sha1 = "0c03844e2231e12fda4d0086fd7cbe4098ee8dc5"
 uuid = "ea2cea3b-5b76-57ae-a6ef-0a8af62496e1"
-version = "5.15.3+1"
+version = "5.15.3+2"
 
 [[deps.QuadGK]]
 deps = ["DataStructures", "LinearAlgebra"]
@@ -1723,6 +1757,12 @@ git-tree-sha1 = "4528479aa01ee1b3b4cd0e6faef0e04cf16466da"
 uuid = "2381bf8a-dfd0-557d-9999-79630e7b1b91"
 version = "1.25.0+0"
 
+[[deps.WeakRefStrings]]
+deps = ["DataAPI", "InlineStrings", "Parsers"]
+git-tree-sha1 = "b1be2855ed9ed8eac54e5caff2afcdb442d52c23"
+uuid = "ea10d353-3f73-51f8-a26c-33c1cb351aa5"
+version = "1.4.2"
+
 [[deps.Widgets]]
 deps = ["Colors", "Dates", "Observables", "OrderedCollections"]
 git-tree-sha1 = "fcdae142c1cfc7d89de2d11e08721d0f2f86c98a"
@@ -1965,6 +2005,7 @@ version = "1.4.1+0"
 # ╠═03fe33ed-4c31-4c3b-b402-494509eae5c2
 # ╠═f58ba902-0e84-435c-ab41-1ce0c5660830
 # ╠═15ed4afa-3339-4938-b647-a6403ab90078
+# ╠═ac243c5f-dcc8-4b1e-b63f-0cb96bb6f6d6
 # ╠═92d88bd4-c8e5-4167-bc40-011b44d3d021
 # ╠═d6ce949d-d0ef-4b9b-a7e1-b2a7c2258213
 # ╟─b68e388a-2967-464f-9c90-cdb67eb97e2e
@@ -1974,24 +2015,13 @@ version = "1.4.1+0"
 # ╠═868be102-6d42-4e71-94df-c8486558cc53
 # ╠═c3b152da-97da-42b3-93e7-a769a9b751c3
 # ╠═6fed789f-c68f-48d7-8ef8-a10d1dfce7dd
-# ╠═5416e834-2d41-4c5c-b0bf-dadb9eb9af3c
-# ╟─a9484fa6-cff7-4630-a6c3-888883c36758
-# ╠═0ae71151-4231-44c9-8fc6-67b917bbdec4
-# ╠═13a8d408-4d2a-4efc-82eb-aa5a7f26f14c
-# ╠═877fda1b-6a18-47d2-a312-1ba58183db33
-# ╟─1ca425e8-8a91-44f7-baa6-eed2c176e1ec
-# ╟─38e41da3-fdc1-4221-81c6-69de56162066
-# ╟─c44b8eaf-ca99-47f8-9533-4ac986c3c4ec
-# ╟─d1308e8a-c995-40d1-92b5-095cbd27b70b
-# ╟─0fec31ee-b3e8-45bf-b933-1c24fcca0687
-# ╟─a049f76b-a7f8-4948-a85c-45a582a588a4
-# ╠═9c68423f-44ee-4e4d-bfb9-b8d516e1a0c4
-# ╠═e864a90f-13ab-436e-b90f-0a6da9320f33
-# ╠═10e0dc44-a3bc-42b1-a8ec-2d4a73e6d99d
-# ╠═f3965ae5-a0ae-4d47-87ef-91d9dc9a874d
-# ╟─46deb0e5-081f-47ae-92af-f64f4a2a218c
-# ╟─25387dd5-9a6f-46a1-b09a-9f8828795363
-# ╟─e56b77f9-b4e6-414e-ac14-7558ae8d80ff
+# ╟─497edfd4-8c69-41cd-a9fb-35a3cf35c23b
+# ╠═4e003878-246b-46ff-8496-eff08b3a0596
+# ╟─60657161-9d68-43b8-8f69-20489a76f786
+# ╟─4a1290c6-ea27-4851-b4e6-3a8956b527b4
+# ╠═fc457183-7e42-4da7-96c0-34815234a8da
+# ╠═2e28a4f2-096a-4257-87cf-e91ef9469786
+# ╟─5416e834-2d41-4c5c-b0bf-dadb9eb9af3c
 # ╟─e6deda84-ff89-4998-852d-cbf752d98936
 # ╟─66e9f543-3c0a-4344-a067-3fbef6228f1d
 # ╟─8bb2090f-6ef8-445b-bca8-e124293bc459
@@ -1999,8 +2029,19 @@ version = "1.4.1+0"
 # ╟─7bba97a1-9850-4dd1-a740-37edcdf44e1b
 # ╠═81b515d0-f00c-457a-babc-2480692ad8e7
 # ╠═cf938c35-3843-4fe2-a6f8-be3381f39141
+# ╟─0a597747-f5cd-40c5-a9a4-7005a34f6b94
+# ╠═2b3701ed-c053-4658-b693-f58cd565d699
+# ╠═c33d2d8f-abc9-4186-9b33-0af1a3508455
+# ╠═b1e37158-a0ca-4556-ab11-4beafd0e0ee5
+# ╟─4dab67c1-b204-42fb-a621-06db4fb4ae11
 # ╟─1557be9b-2a83-45a1-9b81-ce72f27ba64c
-# ╟─360de0f7-aa53-4eda-902b-f0b8d3fd1f1e
-# ╟─39ddb2af-3643-45ff-b8f0-f8c8e09bcbc7
+# ╟─d59ccb58-f737-4b46-be43-ab6cc46679cc
+# ╠═39ddb2af-3643-45ff-b8f0-f8c8e09bcbc7
+# ╟─ea1bcfbb-a214-4acc-9242-08fd1d867d75
+# ╟─5901e7fc-9c1d-46f1-8c93-128106e974a5
+# ╟─a56278b4-9b95-4a5a-aaa8-3e15a83db5bc
+# ╟─6b16b27d-0dfe-4900-bcf5-efa806ce509c
+# ╟─bacd2be5-c44b-4c2e-9660-7d7890ac7a01
+# ╠═11841d64-1d44-4886-9b0e-7eadaa2b8da8
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
