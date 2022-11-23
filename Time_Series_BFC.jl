@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.13
+# v0.19.15
 
 using Markdown
 using InteractiveUtils
@@ -25,7 +25,7 @@ begin
 	Pkg.add("DataFrames")
 	Pkg.add("Statistics")
 	Pkg.add("RecursiveArrayTools")
-	Pkg.develop(url="https://github.com/JuliaNeuroscience/NIfTI.jl")
+	Pkg.add("NIfTI")
 	Pkg.add("Plots")
 	Pkg.add("CSV")
 	using Plots, CSV, NIfTI, Colors, Images, Measures
@@ -35,7 +35,7 @@ begin
 end
 
 # ╔═╡ 6704f270-9d91-4d63-bf53-16e29c246605
-phantom = niread("/Users/hstrey/Desktop/Phantom_talk/Phantom dataset/epi/epi.nii")
+phantom = niread("PhantomData/epi/epi.nii")
 
 # ╔═╡ 8f178d20-c6c2-4e55-8bf4-9cb016b785ee
 size(phantom)
@@ -89,6 +89,33 @@ begin
 	end
 	phantom_ok = phantom[2:end,:,stack_start:stack_end,1:200]
 end
+
+# ╔═╡ 43130725-c005-4d5f-b86e-c374f58311f4
+aqui = CSV.read("PhantomData/Acqtimes.csv",DataFrame)
+
+# ╔═╡ 8549980d-f4d6-4be4-9ed5-ef4fc27481e8
+p_log = CSV.read("PhantomData/epi/log.csv",DataFrame)
+
+# ╔═╡ a06ee4f8-31bb-4b7a-8c04-e4cf65ca53cc
+max_motion = findmax(p_log[!,"tMotionTime"])[1]
+
+# ╔═╡ 05ceb6d2-d3e0-4c3d-96bb-c38bb47dac0c
+slices_without_motion = aqui[!,"Slice"][aqui[!,"Time"] .> max_motion]
+
+# ╔═╡ 21b7d923-848d-4850-bfa2-7bd64102aad2
+slices_ok = sort(slices_without_motion[s-1 .<= slices_without_motion .<= e+1])
+
+# ╔═╡ 33472775-2fad-451a-8715-0bd5d4d87c53
+slices_selected = collect((s-1):(e+1))
+
+# ╔═╡ f21cb7c6-c0f9-49ce-a0b0-6ac95ee63523
+slices_wm = [x in slices_ok ? 1 : 0 for x in slices_selected]
+
+# ╔═╡ 3b43be1c-c782-4a82-9c76-fadce64b71e1
+slices_df = DataFrame(Dict(:slice => slices_selected, :no_motion => slices_wm))
+
+# ╔═╡ 200bf9f2-59d1-4503-90b3-8514198db6f6
+CSV.write("PhantomData/slices.csv",slices_df)
 
 # ╔═╡ 1fce80c1-e747-4d19-997c-31400e8a864c
 # average over the first 200 static slices
@@ -251,10 +278,10 @@ run(ANTscommand)
   ╠═╡ =#
 
 # ╔═╡ 6acaf6cc-c43c-4ba6-97f1-7842129a3d38
-bias = niread("BFC_bias200.nii")
+bias = niread("PhantomData/BFC_bias200.nii")
 
 # ╔═╡ 7e895010-048d-4fde-ad9c-684b979319a4
-Corrected = niread("BFC_static200.nii")
+Corrected = niread("PhantomData/BFC_static200.nii")
 
 # ╔═╡ f66b5dd2-5b16-425d-830d-7006bdac3bde
 begin
@@ -321,6 +348,15 @@ niwrite("BFC_time_series.nii",BFC_NIfTI)
 # ╟─5d9b4de4-7207-4f63-a8a3-b85f7823d736
 # ╠═b52d0c52-164a-4c75-a138-923d02869023
 # ╠═03771ec3-008b-4185-85fe-c498a5e60e66
+# ╠═43130725-c005-4d5f-b86e-c374f58311f4
+# ╠═8549980d-f4d6-4be4-9ed5-ef4fc27481e8
+# ╠═a06ee4f8-31bb-4b7a-8c04-e4cf65ca53cc
+# ╠═05ceb6d2-d3e0-4c3d-96bb-c38bb47dac0c
+# ╠═21b7d923-848d-4850-bfa2-7bd64102aad2
+# ╠═33472775-2fad-451a-8715-0bd5d4d87c53
+# ╠═f21cb7c6-c0f9-49ce-a0b0-6ac95ee63523
+# ╠═3b43be1c-c782-4a82-9c76-fadce64b71e1
+# ╠═200bf9f2-59d1-4503-90b3-8514198db6f6
 # ╠═1fce80c1-e747-4d19-997c-31400e8a864c
 # ╠═c8c923e0-ab23-4d0c-b370-7f4018ae0b43
 # ╠═94258efc-5f30-4d9d-8c1a-9710357866cf
