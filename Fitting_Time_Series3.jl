@@ -114,9 +114,9 @@ end
 αs = staticEs[5,:]
 
 # ╔═╡ 2e28a4f2-096a-4257-87cf-e91ef9469786
-# An adjusted ellipse centers of the each slice
+# Adjusted ellipse centers of the each slice
 centers = let α = mean(αs),
-			  rng = -1:0.15:1.0,
+			  rng = -0.15:0.025:0.15,
 		      cc = staticEs[1:2,:],
 			  # xc = (x0,z)->z.*cos(θ).*cos(αs[z]).+x0,
 			  # yc = (y0,z)->z.*cos(θ).*sin(αs[z]).+y0
@@ -173,14 +173,28 @@ end
 # ╔═╡ 7bba97a1-9850-4dd1-a740-37edcdf44e1b
 md"**Create an interpolation function from the static phantom avarage**"
 
-# ╔═╡ 81b515d0-f00c-457a-babc-2480692ad8e7
-phantom_itp = let (r,c,h) = size(staticimgs),
-				  xs = 1:r, ys = 1:c, zs = 0:h-1
+# ╔═╡ 3142702c-800a-4dfa-937a-d07385f67195
+"""
+	transformfn(imgs)
+
+Create an interpolation function from the phantom slices.
+"""
+function transformfn(slices::AbstractArray{T, 3};
+					 interpolation = BSpline(Quadratic(Flat(OnGrid())))) where {T<:AbstractFloat}
+	# define interpolation grid
+	(r,c,h) = size(slices)
+	xs = 1:r
+	ys = 1:c
+	zs = 1:h
+	# define an interpolation function
 	extrapolate(
-		scale(interpolate(staticimgs, BSpline(Linear())), xs, ys, zs),
+		scale(interpolate(slices, interpolation), xs, ys, zs),
 		Line()
-	) 
-end;
+	) 	
+end
+
+# ╔═╡ 81b515d0-f00c-457a-babc-2480692ad8e7
+phantom_itp = transformfn(staticimgs);
 
 # ╔═╡ cf938c35-3843-4fe2-a6f8-be3381f39141
 # Test interpolation
@@ -229,12 +243,16 @@ let θs = angles, # rotation angles of dynamic volumes
 	plot!(p, acc, label="actual")
 	stat = staticimgs[x,y,z]
 	plot!(p, [1,length(θs)],[stat,stat], label="static avg")
+	mean_sim = mean(sim)
+	mean_acc = mean(acc)
+	plot!(p, [1,length(θs)],[mean_sim,mean_sim], label="mean sim")
+	plot!(p, [1,length(θs)],[mean_acc,mean_acc], label="mean acc")  
 end
 
 # ╔═╡ ea1bcfbb-a214-4acc-9242-08fd1d867d75
 begin
-	@info "Actual" intencity=staticimgs[x,y,z]
-	@info "Interpolated" intencity=phantom_itp(x,y,z)
+	@info "Actual" intensity=staticimgs[x,y,z]
+	@info "Interpolated" intensity=phantom_itp(x,y,z)
 end
 
 # ╔═╡ 5901e7fc-9c1d-46f1-8c93-128106e974a5
@@ -266,7 +284,7 @@ end
 
 # ╔═╡ bacd2be5-c44b-4c2e-9660-7d7890ac7a01
 md"""
-Generate image from an avarage volume slice `Z` by rotating it at an angle `θ` ∈ [-π,π].
+Generate image from an avarage volume slice `Z` by rotating it at an angle `θ` ∈ \[-π,π\] (in degrees).
 
 Slice (Z): $(@bind sliceId html"<input type=number min=1 max=13 value=1></input>")
 Rotation angle (θ): $(@bind theta html"<input type=number min=-180 max=180 value=0></input>")
@@ -285,6 +303,44 @@ let θ = deg2rad(theta)
 	# show averaged image	
 	ave = Gray.(staticimgs[:,:,sliceId] |> genimg)
 	pave = plot(ave, aspect_ratio=1.0, axis=nothing, framestyle=:none, title="img z=$sliceId", size=(300,350))
+	# show generated image
+	pgen = plot(gen, aspect_ratio=1.0, axis=nothing, framestyle=:none, title="generated at $theta")
+	plot(pave, pgen)	
+end
+
+# ╔═╡ 1b70a524-f049-4e06-b2a7-99e5729f3fff
+md"**Original Phantom Images**"
+
+# ╔═╡ eba6c6d4-fee4-4d56-b2c8-6d8b7e1191d6
+phantom_ori = niread(joinpath(DATA_DIR, "epi", "epi_corrected.nii"));
+
+# ╔═╡ 41f79a85-d34a-4109-8cd2-bb68ea6371f2
+size(phantom_ori)
+
+# ╔═╡ 339d5804-eb0f-4c9a-ae20-b86d904505b5
+md"""
+Rotate an original image volume slice `Z` at a time step `T` by rotating it at an angle `θ` ∈ [-π,π] (in degrees).
+
+- Slice (Z): $(@bind zori html"<input type=number min=1 max=28 value=1></input>")
+- Time (T): $(@bind tori html"<input type=number min=1 max=800 value=1></input>")
+- Rotation angle (θ): $(@bind thetaori html"<input type=number min=-180 max=180 value=0></input>")
+"""
+
+# ╔═╡ 6be4281a-7094-415a-a97b-4472b9c25d81
+let θ = deg2rad(thetaori)
+	# cc = staticEs[1:2,:]          # ellipese centers from static average
+	cc = centers                    # simulated centers
+	a = [cc[:,2]; 1]                # line from static average ellipse centers
+	b = [cc[:,end-1]; 13]
+	# create interpolation
+	phantom_itp = transformfn(phantom_ori[:,:,:,tori]);
+	# generate image
+	coords = simulated_coordinates_at_z(sz, zori, a, b, θ)
+	sim = map(c->phantom_itp(c...), coords)
+	gen = Gray.(sim |> genimg)
+	# # show averaged image	
+	ave = Gray.(phantom_ori[:,:,zori,tori] |> genimg)
+	pave = plot(ave, aspect_ratio=1.0, axis=nothing, framestyle=:none, title="img z=$zori", size=(300,350))
 	# show generated image
 	pgen = plot(gen, aspect_ratio=1.0, axis=nothing, framestyle=:none, title="generated at $theta")
 	plot(pave, pgen)	
@@ -2027,6 +2083,7 @@ version = "1.4.1+0"
 # ╟─8bb2090f-6ef8-445b-bca8-e124293bc459
 # ╠═3ff8e722-ec91-4751-bff6-e076599d2855
 # ╟─7bba97a1-9850-4dd1-a740-37edcdf44e1b
+# ╠═3142702c-800a-4dfa-937a-d07385f67195
 # ╠═81b515d0-f00c-457a-babc-2480692ad8e7
 # ╠═cf938c35-3843-4fe2-a6f8-be3381f39141
 # ╟─0a597747-f5cd-40c5-a9a4-7005a34f6b94
@@ -2036,12 +2093,17 @@ version = "1.4.1+0"
 # ╟─4dab67c1-b204-42fb-a621-06db4fb4ae11
 # ╟─1557be9b-2a83-45a1-9b81-ce72f27ba64c
 # ╟─d59ccb58-f737-4b46-be43-ab6cc46679cc
-# ╠═39ddb2af-3643-45ff-b8f0-f8c8e09bcbc7
+# ╟─39ddb2af-3643-45ff-b8f0-f8c8e09bcbc7
 # ╟─ea1bcfbb-a214-4acc-9242-08fd1d867d75
 # ╟─5901e7fc-9c1d-46f1-8c93-128106e974a5
 # ╟─a56278b4-9b95-4a5a-aaa8-3e15a83db5bc
 # ╟─6b16b27d-0dfe-4900-bcf5-efa806ce509c
 # ╟─bacd2be5-c44b-4c2e-9660-7d7890ac7a01
-# ╠═11841d64-1d44-4886-9b0e-7eadaa2b8da8
+# ╟─11841d64-1d44-4886-9b0e-7eadaa2b8da8
+# ╟─1b70a524-f049-4e06-b2a7-99e5729f3fff
+# ╠═eba6c6d4-fee4-4d56-b2c8-6d8b7e1191d6
+# ╠═41f79a85-d34a-4109-8cd2-bb68ea6371f2
+# ╟─339d5804-eb0f-4c9a-ae20-b86d904505b5
+# ╟─6be4281a-7094-415a-a97b-4472b9c25d81
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
