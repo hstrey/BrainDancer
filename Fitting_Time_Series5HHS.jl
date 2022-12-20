@@ -109,7 +109,7 @@ begin
 	pnts_avg = mean(pnts,dims=1)
 	pnts_sub = pnts .- pnts_avg
 	pnts_svd = svd(pnts_sub)
-	pnts_dir = pnts_svd.V[1,:]
+	pnts_dir = pnts_svd.Vt[1,:]
 	@show pnts_avg
 	@show pnts_dir
 	pnts_dir_scaled_z_one = pnts_dir .* 1/pnts_dir[3]
