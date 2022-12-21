@@ -248,7 +248,7 @@ Coordinates:
 
 # ╔═╡ 39ddb2af-3643-45ff-b8f0-f8c8e09bcbc7
 let θs = angles, # rotation angles of dynamic volumes
-	rvfn = rotatevoxel([centers[:,2]; 1], [centers[:,12]; 13]) # create rotation function		
+	rvfn = rotatevoxel([pnts_cenx[1];pnts_ceny[1]; 1], [pnts_cenx[13];pnts_ceny[13]; 13]) # create rotation function		
 	sim = [phantom_itp(rvfn(x, y, z, θ)...) for (i,θ) in enumerate(θs)]
 	p = plot(sim, label="sim($x, $y, $z)", legend=:topright)
 	acc = phantom_ts[x,y,z,firstrotidx:end]
@@ -258,6 +258,15 @@ let θs = angles, # rotation angles of dynamic volumes
 	plot!(p, [1,length(θs)],[mean_sim,mean_sim], label="mean sim")
 	plot!(p, [1,length(θs)],[mean_acc,mean_acc], label="mean acc")
 end
+
+# ╔═╡ 009006e7-b182-4096-8a9b-53f59bbab91e
+[pnts_cenx[1];pnts_ceny[1]; 1]
+
+# ╔═╡ 66805c77-98ab-4a86-866d-4ac84e465544
+[centers[:,12]; 13]
+
+# ╔═╡ 4469ab4a-d182-4eef-a80d-f093be740347
+centers
 
 # ╔═╡ ea1bcfbb-a214-4acc-9242-08fd1d867d75
 begin
@@ -304,8 +313,8 @@ Rotation angle (θ): $(@bind theta html"<input type=number min=-180 max=180 valu
 let θ = deg2rad(theta)
 	# cc = staticEs[1:2,:]          # ellipese centers from static average
 	cc = centers                    # simulated centers
-	a = [cc[:,2]; 1]                # line from static average ellipse centers
-	b = [cc[:,end-1]; 13]
+	a = [pnts_cenx[1];pnts_ceny[1]; 1]                # line from static average ellipse centers
+	b = [pnts_cenx[13];pnts_ceny[13]; 13]
 	# generate image
 	coords = simulated_coordinates_at_z(sz, sliceId, a, b, θ)
 	sim = map(c->phantom_itp(c...), coords)
@@ -2143,15 +2152,18 @@ version = "1.4.1+0"
 # ╠═c33d2d8f-abc9-4186-9b33-0af1a3508455
 # ╠═b1e37158-a0ca-4556-ab11-4beafd0e0ee5
 # ╟─4dab67c1-b204-42fb-a621-06db4fb4ae11
-# ╟─1557be9b-2a83-45a1-9b81-ce72f27ba64c
-# ╟─d59ccb58-f737-4b46-be43-ab6cc46679cc
+# ╠═1557be9b-2a83-45a1-9b81-ce72f27ba64c
+# ╠═d59ccb58-f737-4b46-be43-ab6cc46679cc
 # ╠═39ddb2af-3643-45ff-b8f0-f8c8e09bcbc7
+# ╠═009006e7-b182-4096-8a9b-53f59bbab91e
+# ╠═66805c77-98ab-4a86-866d-4ac84e465544
+# ╠═4469ab4a-d182-4eef-a80d-f093be740347
 # ╟─ea1bcfbb-a214-4acc-9242-08fd1d867d75
 # ╟─5901e7fc-9c1d-46f1-8c93-128106e974a5
-# ╟─a56278b4-9b95-4a5a-aaa8-3e15a83db5bc
+# ╠═a56278b4-9b95-4a5a-aaa8-3e15a83db5bc
 # ╟─6b16b27d-0dfe-4900-bcf5-efa806ce509c
 # ╟─bacd2be5-c44b-4c2e-9660-7d7890ac7a01
-# ╟─11841d64-1d44-4886-9b0e-7eadaa2b8da8
+# ╠═11841d64-1d44-4886-9b0e-7eadaa2b8da8
 # ╟─cb6bec51-f76c-4f18-a023-c31ebce3758e
 # ╠═b8a2fbf0-389c-4c84-9fc0-7b67cebd6eaf
 # ╠═d7544ee9-8984-487e-a9d6-b584d9a59eb0
@@ -2161,6 +2173,6 @@ version = "1.4.1+0"
 # ╠═5e5efa2b-ba64-4976-8f85-20de6a5c60c7
 # ╟─474b12cc-7767-4c78-b429-3788a796a980
 # ╟─655d3550-631b-49a0-af96-d83d9be96c5f
-# ╟─4fdd9c10-227e-4d03-a93e-b8ec8e3287e9
+# ╠═4fdd9c10-227e-4d03-a93e-b8ec8e3287e9
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
