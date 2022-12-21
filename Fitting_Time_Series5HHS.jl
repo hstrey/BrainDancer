@@ -82,6 +82,9 @@ staticEs = let res = zeros(9,length(zs))
 	res
 end
 
+# ╔═╡ c69106dd-7aca-4995-9257-1c0748e9249a
+0.6*180/π
+
 # ╔═╡ c3b152da-97da-42b3-93e7-a769a9b751c3
 plot(staticEs[1,:], label="x0")
 
@@ -91,17 +94,22 @@ plot(staticEs[2,:], label="y0")
 # ╔═╡ 497edfd4-8c69-41cd-a9fb-35a3cf35c23b
 md"**Fit line through the slices' centers & determine a deviation angle from `z`-axis**"
 
+# ╔═╡ a03aa71c-ebe8-4ebb-b469-92c7234992af
+
+
 # ╔═╡ 4e003878-246b-46ff-8496-eff08b3a0596
 lineparams = let data = staticEs[1:2,2:end-1] # use slices from 2 to 12
-	@show data
 	μ = mean(data, dims=2)
-	@show μ
 	F = svd(data .- μ)
 	dir = vec(F.U[1,:])
 	vec(μ), dir, dir[2]/dir[1] # mean, direction, slope
 end
 
 # ╔═╡ 83bd11ee-e65f-4b49-af03-0a0ae1ec11ec
+# here I am using a method that I found at
+# https://www.codefull.net/2015/06/3d-line-fitting/
+# beware that what the matlab code returns is the transpose of V
+# that is why I used Vt, to obtain the correct results
 begin
 	pntsxy = vcat(staticEs[1:2,:])
 	pntsz = collect(1:size(staticEs)[2])
@@ -120,10 +128,13 @@ begin
 		push!(pnts_cenx,xyz[1])
 		push!(pnts_ceny,xyz[2])
 	end
+	@show acos(-pnts_dir[3])
+	@show atan(pnts_dir[2]/pnts_dir[1])
+	@show pnts_dir[1]/pnts_dir[2]
 end
 
-# ╔═╡ 47948c93-b58f-4354-8821-4fbb1dc22ba2
-pnts_cenx
+# ╔═╡ bb2ce2d0-33d4-47ea-882b-a16b61ca3750
+@show atan(pnts_dir[2]/pnts_dir[1])*180/π
 
 # ╔═╡ 60657161-9d68-43b8-8f69-20489a76f786
 md"**Calculate transformation parameters for phantom data generation**"
@@ -158,7 +169,7 @@ let x = staticEs[1,:], y=staticEs[2,:], rng=collect(-1:0.15:1.)
 	p = scatter(x, y, label="centers", legend=:bottomright)
 	xy = lineparams[1] .+ lineparams[2].*rng'
 	plot!(p, xy[1,:], xy[2,:], label="fit")	
-	scatter!(p, pnts_cenx, pnts_ceny, label="sim")
+	scatter!(p, centers[1,:], centers[2,:], label="sim")
 end
 
 # ╔═╡ e6deda84-ff89-4998-852d-cbf752d98936
@@ -2129,12 +2140,14 @@ version = "1.4.1+0"
 # ╟─919d2a18-1c0a-4d4d-a29c-7b50e10549fa
 # ╟─006cc58c-411c-4fb2-b219-45a86df742d8
 # ╠═868be102-6d42-4e71-94df-c8486558cc53
+# ╠═c69106dd-7aca-4995-9257-1c0748e9249a
 # ╠═c3b152da-97da-42b3-93e7-a769a9b751c3
 # ╠═6fed789f-c68f-48d7-8ef8-a10d1dfce7dd
 # ╟─497edfd4-8c69-41cd-a9fb-35a3cf35c23b
+# ╠═a03aa71c-ebe8-4ebb-b469-92c7234992af
 # ╠═4e003878-246b-46ff-8496-eff08b3a0596
 # ╠═83bd11ee-e65f-4b49-af03-0a0ae1ec11ec
-# ╠═47948c93-b58f-4354-8821-4fbb1dc22ba2
+# ╠═bb2ce2d0-33d4-47ea-882b-a16b61ca3750
 # ╟─60657161-9d68-43b8-8f69-20489a76f786
 # ╠═4a1290c6-ea27-4851-b4e6-3a8956b527b4
 # ╠═fc457183-7e42-4da7-96c0-34815234a8da
