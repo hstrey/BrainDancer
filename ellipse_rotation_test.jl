@@ -1,8 +1,18 @@
 ### A Pluto.jl notebook ###
-# v0.19.18
+# v0.19.19
 
 using Markdown
 using InteractiveUtils
+
+# This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
+macro bind(def, element)
+    quote
+        local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
+        local el = $(esc(element))
+        global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
+        el
+    end
+end
 
 # ╔═╡ be73feb6-7fd6-11ed-2284-d94cd23699a5
 begin
@@ -13,14 +23,213 @@ begin
 	# end
 	
 	using Plots, Colors, StatsPlots, Measures
-	using NIfTI
 	using Images, ImageSegmentation, ImageTransformations
 	using CoordinateTransformations, Rotations
 	using Statistics
 	using LinearAlgebra, LsqFit, Interpolations
 	using DataFrames, CSV
+	using OffsetArrays
 	const ITI = ImageTransformations.Interpolations
 end
+
+# ╔═╡ 2e0051b1-e016-42a8-9589-bb76cc8af22d
+function gellipse(x,y,x0,y0,a,b,θ,A,σ)
+	dx = x .- x0
+	dy = y .- y0
+	ct = cos(θ)
+	st = sin(θ)
+	c1 = (dx.*ct.+dy.*st).^2.0
+	c2 = (dx.*st.-dy.*ct).^2.0
+	return A.*exp.(-(1.0.-sqrt.(c1./(a^2) .+ c2./(b^2))).^2.0/(σ^2))
+end
+
+# ╔═╡ 69fe5971-be09-4198-98fc-23a6bac00f28
+md"Coordinate grid"
+
+# ╔═╡ 8520f02b-b520-47fe-bd29-555339aaf424
+xs=-4.0:0.1:4.0
+
+# ╔═╡ 491b6a9c-da50-4dc5-9ed2-370490c5e96d
+ys=-4.0:0.1:4.0
+
+# ╔═╡ 092ab9ec-de96-4043-bcce-f20d8afd0195
+zs = 0:0.1:1
+
+# ╔═╡ eab1527e-e9e0-4364-8ad7-3091726b972a
+md"Ellipse parameters"
+
+# ╔═╡ 8923d04f-ffa5-4f5b-8917-e42be8dc8370
+x0, y0, a, b, θ, A, σ = (
+	0.0, # x0
+	0.0, # y0
+	1.0, # rx
+	2.0, # ry
+	π/6, # θ
+	1.0, # A
+	0.3  # σ
+)
+
+# ╔═╡ 38b3ad0b-344d-4185-8651-5b6b5a0d5284
+md"Generate intensities in form of an ellipse in the XYZ volume defined by the above coordinate grid" 
+
+# ╔═╡ e1a0335f-02f1-47b7-b41f-7d12ff580077
+I = [gellipse(x, y, x0, y0, a, b, θ, A, σ) for x in xs, y in ys, z in zs].+rand(length(xs), length(ys), length(zs)).*0.15;
+
+# ╔═╡ eb863635-7e2c-4a5f-85d4-0098a3747c00
+heatmap(xs, ys, I[:,:,1], aspect_ratio=1)
+
+# ╔═╡ 21e0b05a-e9f6-4343-9e58-ad07546ee880
+# create interpolation object
+itp = extrapolate(
+	scale(interpolate(I, BSpline(Quadratic())), xs, ys, zs),
+	Line()
+);
+
+# ╔═╡ 142fda2e-3719-4116-9b38-5b73c2b3f421
+# test interpolation
+I[41,51,1], itp(0.0,1.0,1.0), itp(0.01,1.0,1.0)
+
+# ╔═╡ 2b3b5788-823d-4da4-b710-7143354cc3c2
+md"Define transformation matrices"
+
+# ╔═╡ fc7ebdf7-98f5-42e0-a577-22d2eb5661d2
+# Rotation matrix YZ
+Rx(α) = [1 0 0; 0 cos(α) -sin(α); 0 sin(α) cos(α)]
+
+# ╔═╡ 92e34ea6-a9e4-42b4-8a83-1f83af9c1b82
+# Rotation matrix XZ
+Ry(β) = [cos(β) 0 sin(β); 0 1 0; -sin(β) 0 cos(β)]
+
+# ╔═╡ 0040de50-e212-47d7-8dfe-dab556685233
+# Rotation matrix XY
+Rz(γ) = [cos(γ) -sin(γ) 0; sin(γ) cos(γ) 0; 0 0 1]
+
+# ╔═╡ e41294c5-2c15-466b-a64e-e8ffb8ae01ba
+# Scaling ellipse into circle
+S = [a/b 0 0; 0 1 0; 0 0 1]
+
+# ╔═╡ 4b5f4fa6-6a2f-4969-a9f8-d996011bafa7
+# Quadratic form
+Q = let A = a^2*sin(θ)^2 + b^2cos(θ)^2,
+		B = 2(b^2-a^2)sin(θ)cos(θ),
+		C = a^2*cos(θ)^2 + b^2*sin(θ)^2,
+		D = -2A*x0 - B*y0,
+		E = -B*x0 - 2C*y0,
+		F = A*x0^2 + B*x0*y0 + C*y0^2 - a^2*b^2
+	[A B D
+	 B C E
+	 D E F]
+end
+
+# ╔═╡ 140e9ca3-3876-4055-8cff-f26a6e0497ba
+# ╠═╡ disabled = true
+#=╠═╡
+let a = 9, b = 4
+	α(θ) = [(√a)*cos(θ), (√b)*sin(θ), 5]
+	A = α(π/4)
+	@info "Start" A
+	B = α(π/4 + π/3)
+	@info "End" B
+	R(θ) = [cos(θ) √b/√a*sin(θ) 0 ; -√a/√b*sin(θ) cos(θ) 0; 0 0 1]
+	@info "Rot" R(π/3)
+	R(π/3)'*A, B
+end
+  ╠═╡ =#
+
+# ╔═╡ d39b74ad-960a-47a3-a656-13b7452e921e
+md"""
+Transform intensities of an ellliptical shape by rotating at an angle `α` ∈ [-π,π].
+
+Rotation angle (α): $(@bind αdeg2 html"<input type=number min=-180 max=180 value=0></input>")
+"""
+
+# ╔═╡ fd93a4bf-bbac-4bc0-a850-0b21a1a80511
+# Scale data
+Inew2 = let α = deg2rad(αdeg2)
+	# v3 (rot-scale matrix)
+	Ci = ([x,y,1] for x in xs, y in ys)
+	C = hcat(Ci...)
+	# R(θ) = [cos(θ) b/a*sin(θ) 0 ; -a/b*sin(θ) cos(θ) 0; 0 0 1]
+	# SC = (R(α)*C)'
+	# SC = (Rz(α)*S*C)'
+	SC = (Rz(θ)*S*Rz(α)*inv(S)*Rz(-θ)*C)'
+	# interpolate
+	V = itp.(SC[:,1], SC[:,2], 1)
+	reshape(V, size(xs)..., size(ys)...)
+end;
+
+# ╔═╡ be370c25-23c0-4749-bed4-e055e4cbccfc
+heatmap(xs, ys, Inew2[:,:,1], aspect_ratio=1)
+
+# ╔═╡ 18d02ed1-501c-42f4-ba86-91c4087eb911
+md"Coordinate transformation"
+
+# ╔═╡ 19820838-2d58-4488-b021-be416f1b079a
+function coord2cell(r::AbstractRange{T}, c::T)::Int where {T}
+	rmin, rmax = extrema(r)
+	rstep, rsize = step(r), length(r)
+	rseg = abs(rmax - rmin)/rsize
+	@info c rseg rsize rseg*rsize
+	c <= rmin && return 1
+	c >= rmax && return rsize
+	ir = abs(c - rmin + rstep/2)/rstep	# evaluate center of a cell
+	@info ir
+	ceil(Int, ir+eps(T))
+end
+
+# ╔═╡ f3ca6df2-3b3f-44a1-a675-9825078bf6c8
+cs = let γs = 0:0.1:2π,
+		 C = [1, 0, 0]
+	# C = S*C
+	# C = hcat((Rz(γ)*C for γ in γs)...)
+	R(θ) = [cos(θ) b/a*sin(θ) 0 ; -a/b*sin(θ) cos(θ) 0; 0 0 1]
+	@info Rz(3π/4)*R(π/3)*C
+	# C = hcat((Rz(3π/4)*R(γ)*C for γ in γs)...)
+	C = hcat((S*Rz(π/5)*R(γ)*S*C for γ in γs)...)	
+	scatter(C[1,:], C[2,:], aspect_ratio=1, legend=:none)
+	# C = Rz(0)*C	
+	# SC = C'	
+	# R(θ) = [cos(θ) b/a*sin(θ) 0 ; -a/b*sin(θ) cos(θ) 0; 0 0 1]
+	# SC = (R(α)*C)'
+# # v2 (per-coordinate transforms)
+	# xa = (xs.-x0).*cos(α) .- (ys.-y0).*sin(α) .+ x0
+	# ya = (xs.-x0).*sin(α) .+ (ys.-y0).*cos(α) .+ y0	
+end
+
+# ╔═╡ bc2b5542-4f49-46ec-821e-89c6a80659d2
+# ╠═╡ show_logs = false
+[coord2cell(xs, x) for x in xs]
+
+# ╔═╡ 84eb01c2-ae03-4f97-8680-133f38a9fbe7
+let i = coord2cell(xs, -3.94)
+	i, xs[i]
+end
+
+# ╔═╡ ce536221-3a9b-4139-8a4c-74ad14aeb705
+# ╠═╡ disabled = true
+#=╠═╡
+let iidxs = (41, 41, 1),
+	(i, j, k) = iidxs,
+	α = 0.0, origin = [xs[i], ys[j], zs[k]]
+	coords = [iidxs...]
+	@info "Angles" α θ
+	@info "Coords" coords
+	@info "Origin" origin
+	t = origin
+	@info "Translated" t
+	s = S*t
+	@info "Scaled" s
+	trx = Rx(θ)*s
+	@info "Rotared around x-axis (counter-clockwise)" trx
+	trz = Rz(-α)*trx
+	@info "Rotared around z-axis (clockwise)" trz
+	sinv = inv(S)*trz
+	@info "Scaled back" sinv
+	trinv = sinv .+ origin
+	@info "Translated back" trinv
+	trinv, inv(S)*Rz(-α)*Rx(θ)*S*t
+end
+  ╠═╡ =#
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -36,7 +245,7 @@ Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LsqFit = "2fda8390-95c7-5789-9bda-21331edee243"
 Measures = "442fdcdd-2543-5da2-b0f3-8c86c306513e"
-NIfTI = "a3a9e032-41b5-5fc4-967a-a6b7a19844d3"
+OffsetArrays = "6fe1bfb0-de20-5000-8ca7-80f57d26f881"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Rotations = "6038ab10-8711-5258-84ad-4b1120ba62dc"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
@@ -53,7 +262,7 @@ Images = "~0.25.2"
 Interpolations = "~0.14.7"
 LsqFit = "~0.13.0"
 Measures = "~0.3.2"
-NIfTI = "~0.5.8"
+OffsetArrays = "~1.12.8"
 Plots = "~1.38.0"
 Rotations = "~1.3.3"
 StatsPlots = "~0.15.4"
@@ -63,9 +272,9 @@ StatsPlots = "~0.15.4"
 PLUTO_MANIFEST_TOML_CONTENTS = """
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.8.3"
+julia_version = "1.8.1"
 manifest_format = "2.0"
-project_hash = "d137cd4443f8bef28d6f9ffb8d849601c49f1ad5"
+project_hash = "4aacc5bd6c732429d671aa67c6e730d3deff9e23"
 
 [[deps.AbstractFFTs]]
 deps = ["ChainRulesCore", "LinearAlgebra"]
@@ -148,7 +357,7 @@ uuid = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 version = "0.10.8"
 
 [[deps.Cairo_jll]]
-deps = ["Artifacts", "Bzip2_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Pkg", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
+deps = ["Artifacts", "Bzip2_jll", "CompilerSupportLibraries_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Pkg", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
 git-tree-sha1 = "4b859a208b2397a7a623a03449e4636bdb17bcf2"
 uuid = "83423d85-b0ee-5818-9007-b63ccbeb887a"
 version = "1.16.1+1"
@@ -950,12 +1159,6 @@ git-tree-sha1 = "efe9c8ecab7a6311d4b91568bd6c88897822fabe"
 uuid = "6f286f6a-111f-5878-ab1e-185364afe411"
 version = "0.10.0"
 
-[[deps.NIfTI]]
-deps = ["Base64", "CodecZlib", "MappedArrays", "Mmap", "TranscodingStreams"]
-git-tree-sha1 = "2bcec409f8e60776933438c63696d27006165a84"
-uuid = "a3a9e032-41b5-5fc4-967a-a6b7a19844d3"
-version = "0.5.8"
-
 [[deps.NLSolversBase]]
 deps = ["DiffResults", "Distributed", "FiniteDiff", "ForwardDiff"]
 git-tree-sha1 = "a0b464d183da839699f4c79e7606d9d186ec172c"
@@ -1419,7 +1622,7 @@ version = "1.10.0"
 [[deps.Tar]]
 deps = ["ArgTools", "SHA"]
 uuid = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
-version = "1.10.1"
+version = "1.10.0"
 
 [[deps.TensorCore]]
 deps = ["LinearAlgebra"]
@@ -1739,6 +1942,33 @@ version = "1.4.1+0"
 
 # ╔═╡ Cell order:
 # ╠═be73feb6-7fd6-11ed-2284-d94cd23699a5
-# ╠═080815ed-fefc-4873-9c6e-addedda360a7
+# ╠═2e0051b1-e016-42a8-9589-bb76cc8af22d
+# ╟─69fe5971-be09-4198-98fc-23a6bac00f28
+# ╠═8520f02b-b520-47fe-bd29-555339aaf424
+# ╠═491b6a9c-da50-4dc5-9ed2-370490c5e96d
+# ╠═092ab9ec-de96-4043-bcce-f20d8afd0195
+# ╟─eab1527e-e9e0-4364-8ad7-3091726b972a
+# ╠═8923d04f-ffa5-4f5b-8917-e42be8dc8370
+# ╟─38b3ad0b-344d-4185-8651-5b6b5a0d5284
+# ╠═e1a0335f-02f1-47b7-b41f-7d12ff580077
+# ╠═eb863635-7e2c-4a5f-85d4-0098a3747c00
+# ╠═21e0b05a-e9f6-4343-9e58-ad07546ee880
+# ╠═142fda2e-3719-4116-9b38-5b73c2b3f421
+# ╟─2b3b5788-823d-4da4-b710-7143354cc3c2
+# ╠═fc7ebdf7-98f5-42e0-a577-22d2eb5661d2
+# ╠═92e34ea6-a9e4-42b4-8a83-1f83af9c1b82
+# ╠═0040de50-e212-47d7-8dfe-dab556685233
+# ╠═e41294c5-2c15-466b-a64e-e8ffb8ae01ba
+# ╠═4b5f4fa6-6a2f-4969-a9f8-d996011bafa7
+# ╠═140e9ca3-3876-4055-8cff-f26a6e0497ba
+# ╟─d39b74ad-960a-47a3-a656-13b7452e921e
+# ╠═fd93a4bf-bbac-4bc0-a850-0b21a1a80511
+# ╟─be370c25-23c0-4749-bed4-e055e4cbccfc
+# ╟─18d02ed1-501c-42f4-ba86-91c4087eb911
+# ╟─19820838-2d58-4488-b021-be416f1b079a
+# ╠═f3ca6df2-3b3f-44a1-a675-9825078bf6c8
+# ╠═bc2b5542-4f49-46ec-821e-89c6a80659d2
+# ╠═84eb01c2-ae03-4f97-8680-133f38a9fbe7
+# ╠═ce536221-3a9b-4139-8a4c-74ad14aeb705
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
