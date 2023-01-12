@@ -73,7 +73,10 @@ x0, y0, a, b, θ, A, σ = (
 md"Generate intensities in form of an ellipse in the XYZ volume defined by the above coordinate grid" 
 
 # ╔═╡ e1a0335f-02f1-47b7-b41f-7d12ff580077
-I = [gellipse(x, y, x0, y0, a, b, θ, A, σ) for x in xs, y in ys, z in zs].+rand(length(xs), length(ys), length(zs)).*0.15;
+I = [gellipse(x, y, x0, y0, a, b, θ, A, σ) for x in xs, y in ys, z in zs];
+
+# ╔═╡ c0f0c66f-88c1-4839-8cf6-39449d80b7dc
+I[32:49,:32:49,:] .+= fill(0.15, 18, 18, length(zs));
 
 # ╔═╡ eb863635-7e2c-4a5f-85d4-0098a3747c00
 heatmap(xs, ys, I[:,:,1], aspect_ratio=1)
@@ -149,12 +152,9 @@ Inew2 = let α = deg2rad(αdeg2)
 	# v3 (rot-scale matrix)
 	Ci = ([x,y,1] for x in xs, y in ys)
 	C = hcat(Ci...)
-	# R(θ) = [cos(θ) b/a*sin(θ) 0 ; -a/b*sin(θ) cos(θ) 0; 0 0 1]
-	# SC = (R(α)*C)'
-	# SC = (Rz(α)*S*C)'
-	SC = (Rz(θ)*S*Rz(α)*inv(S)*Rz(-θ)*C)'
+	SC = Rz(θ)*S*Rz(α)*inv(S)*Rz(-θ)*C
 	# interpolate
-	V = itp.(SC[:,1], SC[:,2], 1)
+	V = itp.(SC[1,:], SC[2,:], 1)
 	reshape(V, size(xs)..., size(ys)...)
 end;
 
@@ -164,20 +164,9 @@ heatmap(xs, ys, Inew2[:,:,1], aspect_ratio=1)
 # ╔═╡ 18d02ed1-501c-42f4-ba86-91c4087eb911
 md"Coordinate transformation"
 
-# ╔═╡ 19820838-2d58-4488-b021-be416f1b079a
-function coord2cell(r::AbstractRange{T}, c::T)::Int where {T}
-	rmin, rmax = extrema(r)
-	rstep, rsize = step(r), length(r)
-	rseg = abs(rmax - rmin)/rsize
-	@info c rseg rsize rseg*rsize
-	c <= rmin && return 1
-	c >= rmax && return rsize
-	ir = abs(c - rmin + rstep/2)/rstep	# evaluate center of a cell
-	@info ir
-	ceil(Int, ir+eps(T))
-end
-
 # ╔═╡ f3ca6df2-3b3f-44a1-a675-9825078bf6c8
+# ╠═╡ disabled = true
+#=╠═╡
 cs = let γs = 0:0.1:2π,
 		 C = [1, 0, 0]
 	# C = S*C
@@ -195,40 +184,26 @@ cs = let γs = 0:0.1:2π,
 	# xa = (xs.-x0).*cos(α) .- (ys.-y0).*sin(α) .+ x0
 	# ya = (xs.-x0).*sin(α) .+ (ys.-y0).*cos(α) .+ y0	
 end
+  ╠═╡ =#
+
+# ╔═╡ 19820838-2d58-4488-b021-be416f1b079a
+function coord2cell(r::AbstractRange{T}, c::T)::Int where {T}
+	rmin, rmax = extrema(r)
+	rstep, rsize = step(r), length(r)
+	rseg = abs(rmax - rmin)/rsize
+	@info c rseg rsize rseg*rsize
+	c <= rmin && return 1
+	c >= rmax && return rsize
+	ir = abs(c - rmin + rstep/2)/rstep	# evaluate center of a cell
+	@info ir
+	ceil(Int, ir+eps(T))
+end
 
 # ╔═╡ bc2b5542-4f49-46ec-821e-89c6a80659d2
 # ╠═╡ show_logs = false
-[coord2cell(xs, x) for x in xs]
-
-# ╔═╡ 84eb01c2-ae03-4f97-8680-133f38a9fbe7
-let i = coord2cell(xs, -3.94)
-	i, xs[i]
-end
-
-# ╔═╡ ce536221-3a9b-4139-8a4c-74ad14aeb705
 # ╠═╡ disabled = true
 #=╠═╡
-let iidxs = (41, 41, 1),
-	(i, j, k) = iidxs,
-	α = 0.0, origin = [xs[i], ys[j], zs[k]]
-	coords = [iidxs...]
-	@info "Angles" α θ
-	@info "Coords" coords
-	@info "Origin" origin
-	t = origin
-	@info "Translated" t
-	s = S*t
-	@info "Scaled" s
-	trx = Rx(θ)*s
-	@info "Rotared around x-axis (counter-clockwise)" trx
-	trz = Rz(-α)*trx
-	@info "Rotared around z-axis (clockwise)" trz
-	sinv = inv(S)*trz
-	@info "Scaled back" sinv
-	trinv = sinv .+ origin
-	@info "Translated back" trinv
-	trinv, inv(S)*Rz(-α)*Rx(θ)*S*t
-end
+[coord2cell(xs, x) for x in xs]
   ╠═╡ =#
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -1951,6 +1926,7 @@ version = "1.4.1+0"
 # ╠═8923d04f-ffa5-4f5b-8917-e42be8dc8370
 # ╟─38b3ad0b-344d-4185-8651-5b6b5a0d5284
 # ╠═e1a0335f-02f1-47b7-b41f-7d12ff580077
+# ╠═c0f0c66f-88c1-4839-8cf6-39449d80b7dc
 # ╠═eb863635-7e2c-4a5f-85d4-0098a3747c00
 # ╠═21e0b05a-e9f6-4343-9e58-ad07546ee880
 # ╠═142fda2e-3719-4116-9b38-5b73c2b3f421
@@ -1965,10 +1941,8 @@ version = "1.4.1+0"
 # ╠═fd93a4bf-bbac-4bc0-a850-0b21a1a80511
 # ╟─be370c25-23c0-4749-bed4-e055e4cbccfc
 # ╟─18d02ed1-501c-42f4-ba86-91c4087eb911
+# ╟─f3ca6df2-3b3f-44a1-a675-9825078bf6c8
 # ╟─19820838-2d58-4488-b021-be416f1b079a
-# ╠═f3ca6df2-3b3f-44a1-a675-9825078bf6c8
 # ╠═bc2b5542-4f49-46ec-821e-89c6a80659d2
-# ╠═84eb01c2-ae03-4f97-8680-133f38a9fbe7
-# ╠═ce536221-3a9b-4139-8a4c-74ad14aeb705
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
