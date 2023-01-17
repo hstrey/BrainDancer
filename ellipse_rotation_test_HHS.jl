@@ -29,6 +29,7 @@ begin
 	using LinearAlgebra, LsqFit, Interpolations
 	using DataFrames, CSV
 	using OffsetArrays
+	using Random, Distributions
 	const ITI = ImageTransformations.Interpolations
 end
 
@@ -47,13 +48,62 @@ end
 md"Coordinate grid"
 
 # ╔═╡ 8520f02b-b520-47fe-bd29-555339aaf424
-xs=-4.0:0.1:4.0
+xs=-9.5:9.5
 
 # ╔═╡ 491b6a9c-da50-4dc5-9ed2-370490c5e96d
-ys=-4.0:0.1:4.0
+ys=-9.5:9.5
 
 # ╔═╡ 092ab9ec-de96-4043-bcce-f20d8afd0195
-zs = 0:0.1:1
+zs = -4.5:4.5
+
+# ╔═╡ 266ec931-004e-4c72-be99-dd5ccfa34797
+o = ones(10,10)*2
+
+# ╔═╡ 9a8a3380-e050-49cf-a702-aecd2491d276
+z = ones(10,10)
+
+# ╔═╡ 7fd02469-7945-4fca-8046-bf69208ac199
+cart = hcat(vcat(o,z),vcat(z,o))
+
+# ╔═╡ 0ab4c564-981a-486e-8fe1-4e894377887c
+nd = Normal(0,0.1)
+
+# ╔═╡ 91194e7a-d6c7-4f20-9cc0-c8086bb07ec8
+noise = rand(nd,(20,20))
+
+# ╔═╡ d21d5a22-b67b-4005-8ca4-252cf95e9be6
+cartn = cart .+ noise
+
+# ╔═╡ a8fb4202-d054-4164-bccd-0190e3031790
+heatmap(xs, ys, cartn, aspect_ratio=1)
+
+# ╔═╡ 0d8156cd-df75-43fc-8275-89e3d6b45e51
+cart_itp = let (r,c) = size(cartn),
+				  xs = , ys = 1:c
+	extrapolate(
+		scale(interpolate(staticimgs, BSpline(Linear())), xs, ys, zs),
+		Line()
+	) 
+end;
+
+# ╔═╡ 1952e174-38bb-4b09-b77c-dd6acc0310c1
+coords = [(x,y) for x in xs for y in ys if (x^2+y^2 < 5^2)]
+
+# ╔═╡ 3be7ebf4-8871-4f01-b352-fbde7579ecda
+begin
+	cart_inner = cartn
+	for pixel in coords
+		cart_inner[round(Int,pixel[1]+10.5),round(Int,pixel[2]+10.5)] = 1
+	end
+	heatmap(xs, ys, cart_inner, aspect_ratio=1)
+end
+
+# ╔═╡ a8f6e698-7286-4024-b91d-b03eeda05df0
+cart_itp = 
+	extrapolate(
+		Interpolations.scale(interpolate(cartn, BSpline(Linear())), xs, ys),
+		Line()
+	) 
 
 # ╔═╡ eab1527e-e9e0-4364-8ad7-3091726b972a
 md"Ellipse parameters"
@@ -69,29 +119,6 @@ x0, y0, a, b, θ, A, σ = (
 	0.3  # σ
 )
 
-# ╔═╡ 38b3ad0b-344d-4185-8651-5b6b5a0d5284
-md"Generate intensities in form of an ellipse in the XYZ volume defined by the above coordinate grid" 
-
-# ╔═╡ e1a0335f-02f1-47b7-b41f-7d12ff580077
-I = [gellipse(x, y, x0, y0, a, b, θ, A, σ) for x in xs, y in ys, z in zs];
-
-# ╔═╡ c0f0c66f-88c1-4839-8cf6-39449d80b7dc
-I[32:49,:32:49,:] .+= fill(0.15, 18, 18, length(zs));
-
-# ╔═╡ eb863635-7e2c-4a5f-85d4-0098a3747c00
-heatmap(xs, ys, I[:,:,1], aspect_ratio=1)
-
-# ╔═╡ 21e0b05a-e9f6-4343-9e58-ad07546ee880
-# create interpolation object
-itp = extrapolate(
-	scale(interpolate(I, BSpline(Quadratic())), xs, ys, zs),
-	Line()
-);
-
-# ╔═╡ 142fda2e-3719-4116-9b38-5b73c2b3f421
-# test interpolation
-I[41,51,1], itp(0.0,1.0,1.0), itp(0.01,1.0,1.0)
-
 # ╔═╡ 2b3b5788-823d-4da4-b710-7143354cc3c2
 md"Define transformation matrices"
 
@@ -105,7 +132,7 @@ Ry(β) = [cos(β) 0 sin(β); 0 1 0; -sin(β) 0 cos(β)]
 
 # ╔═╡ 0040de50-e212-47d7-8dfe-dab556685233
 # Rotation matrix XY
-Rz(γ) = [cos(γ) -sin(γ) 0; sin(γ) cos(γ) 0; 0 0 1]
+Rz(γ) = [cos(γ) -sin(γ); sin(γ) cos(γ)]
 
 # ╔═╡ e41294c5-2c15-466b-a64e-e8ffb8ae01ba
 # Scaling ellipse into circle
@@ -133,34 +160,23 @@ Rotation angle (α): $(@bind αdeg2 html"<input type=number min=-180 max=180 val
 
 # ╔═╡ fd93a4bf-bbac-4bc0-a850-0b21a1a80511
 # Scale data
-Inew2 = let α = deg2rad(αdeg2)
-	# v3 (rot-scale matrix)
-	Ci = ([x,y,1] for x in xs, y in ys)
-	C = hcat(Ci...)
-	SC = Rz(θ)*S*Rz(α)*inv(S)*Rz(-θ)*C
-	# interpolate
-	V = itp.(SC[1,:], SC[2,:], 1)
-	reshape(V, size(xs)..., size(ys)...)
-end;
-
-# ╔═╡ be370c25-23c0-4749-bed4-e055e4cbccfc
-heatmap(xs, ys, Inew2[:,:,1], aspect_ratio=1)
+begin
+	cart_new = 1.5*ones(20,20)
+	α = deg2rad(αdeg2)
+	for pixel in coords
+		(x,y) = pixel
+		new_coord = Rz(α) * [x; y]
+		cart_new[round(Int,x+10.5),round(Int,y+10.5)] = cart_itp(new_coord[1],new_coord[2])
+	end
+	heatmap(xs, ys, cart_new, aspect_ratio=1)
+	tmin = 0
+	tmax = 2π
+	tvec = range(tmin, tmax, length = 100)
+	plot!(5*sin.(tvec), 5*cos.(tvec))
+end
 
 # ╔═╡ 18d02ed1-501c-42f4-ba86-91c4087eb911
-md"Coordinate transformation"
-
-# ╔═╡ 19820838-2d58-4488-b021-be416f1b079a
-function coord2cell(r::AbstractRange{T}, c::T)::Int where {T}
-	rmin, rmax = extrema(r)
-	rstep, rsize = step(r), length(r)
-	rseg = abs(rmax - rmin)/rsize
-	@info c rseg rsize rseg*rsize
-	c <= rmin && return 1
-	c >= rmax && return rsize
-	ir = abs(c - rmin + rstep/2)/rstep	# evaluate center of a cell
-	@info ir
-	ceil(Int, ir+eps(T))
-end
+md"deformation"
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -169,6 +185,7 @@ CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 Colors = "5ae59095-9a9b-59fe-a467-6f913c188581"
 CoordinateTransformations = "150eb455-5306-5404-9cee-2592286d6298"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 ImageSegmentation = "80713f31-8817-5129-9cf8-209ff8fb23e1"
 ImageTransformations = "02fcd773-0e25-5acc-982a-7f6622650795"
 Images = "916415d5-f1e6-5110-898d-aaa5f9f070e0"
@@ -178,6 +195,7 @@ LsqFit = "2fda8390-95c7-5789-9bda-21331edee243"
 Measures = "442fdcdd-2543-5da2-b0f3-8c86c306513e"
 OffsetArrays = "6fe1bfb0-de20-5000-8ca7-80f57d26f881"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Rotations = "6038ab10-8711-5258-84ad-4b1120ba62dc"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 StatsPlots = "f3b207a7-027a-5e70-b257-86293d7955fd"
@@ -187,6 +205,7 @@ CSV = "~0.10.8"
 Colors = "~0.12.10"
 CoordinateTransformations = "~0.6.2"
 DataFrames = "~1.4.4"
+Distributions = "~0.25.80"
 ImageSegmentation = "~1.7.0"
 ImageTransformations = "~0.9.5"
 Images = "~0.25.2"
@@ -205,7 +224,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.8.5"
 manifest_format = "2.0"
-project_hash = "4aacc5bd6c732429d671aa67c6e730d3deff9e23"
+project_hash = "05ad2746a4b4d405a14e867161d599b00de4115f"
 
 [[deps.AbstractFFTs]]
 deps = ["ChainRulesCore", "LinearAlgebra"]
@@ -468,9 +487,9 @@ uuid = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 
 [[deps.Distributions]]
 deps = ["ChainRulesCore", "DensityInterface", "FillArrays", "LinearAlgebra", "PDMats", "Printf", "QuadGK", "Random", "SparseArrays", "SpecialFunctions", "Statistics", "StatsBase", "StatsFuns", "Test"]
-git-tree-sha1 = "a7756d098cbabec6b3ac44f369f74915e8cfd70a"
+git-tree-sha1 = "74911ad88921455c6afcad1eefa12bd7b1724631"
 uuid = "31c24e10-a181-5473-b8eb-7969acd0382f"
-version = "0.25.79"
+version = "0.25.80"
 
 [[deps.DocStringExtensions]]
 deps = ["LibGit2"]
@@ -1878,27 +1897,27 @@ version = "1.4.1+0"
 # ╠═8520f02b-b520-47fe-bd29-555339aaf424
 # ╠═491b6a9c-da50-4dc5-9ed2-370490c5e96d
 # ╠═092ab9ec-de96-4043-bcce-f20d8afd0195
+# ╠═266ec931-004e-4c72-be99-dd5ccfa34797
+# ╠═9a8a3380-e050-49cf-a702-aecd2491d276
+# ╠═7fd02469-7945-4fca-8046-bf69208ac199
+# ╠═0ab4c564-981a-486e-8fe1-4e894377887c
+# ╠═91194e7a-d6c7-4f20-9cc0-c8086bb07ec8
+# ╠═d21d5a22-b67b-4005-8ca4-252cf95e9be6
+# ╠═a8fb4202-d054-4164-bccd-0190e3031790
+# ╠═0d8156cd-df75-43fc-8275-89e3d6b45e51
+# ╠═1952e174-38bb-4b09-b77c-dd6acc0310c1
+# ╠═3be7ebf4-8871-4f01-b352-fbde7579ecda
+# ╠═a8f6e698-7286-4024-b91d-b03eeda05df0
 # ╟─eab1527e-e9e0-4364-8ad7-3091726b972a
 # ╠═8923d04f-ffa5-4f5b-8917-e42be8dc8370
-# ╟─38b3ad0b-344d-4185-8651-5b6b5a0d5284
-# ╠═e1a0335f-02f1-47b7-b41f-7d12ff580077
-# ╠═c0f0c66f-88c1-4839-8cf6-39449d80b7dc
-# ╠═eb863635-7e2c-4a5f-85d4-0098a3747c00
-# ╠═21e0b05a-e9f6-4343-9e58-ad07546ee880
-# ╠═142fda2e-3719-4116-9b38-5b73c2b3f421
 # ╟─2b3b5788-823d-4da4-b710-7143354cc3c2
 # ╠═fc7ebdf7-98f5-42e0-a577-22d2eb5661d2
 # ╠═92e34ea6-a9e4-42b4-8a83-1f83af9c1b82
 # ╠═0040de50-e212-47d7-8dfe-dab556685233
 # ╠═e41294c5-2c15-466b-a64e-e8ffb8ae01ba
 # ╠═4b5f4fa6-6a2f-4969-a9f8-d996011bafa7
-# ╠═140e9ca3-3876-4055-8cff-f26a6e0497ba
 # ╟─d39b74ad-960a-47a3-a656-13b7452e921e
 # ╠═fd93a4bf-bbac-4bc0-a850-0b21a1a80511
-# ╟─be370c25-23c0-4749-bed4-e055e4cbccfc
-# ╟─18d02ed1-501c-42f4-ba86-91c4087eb911
-# ╟─f3ca6df2-3b3f-44a1-a675-9825078bf6c8
-# ╟─19820838-2d58-4488-b021-be416f1b079a
-# ╠═bc2b5542-4f49-46ec-821e-89c6a80659d2
+# ╠═18d02ed1-501c-42f4-ba86-91c4087eb911
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
