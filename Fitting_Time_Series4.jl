@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.17
+# v0.19.19
 
 using Markdown
 using InteractiveUtils
@@ -29,6 +29,7 @@ begin
 	using Statistics
 	using LinearAlgebra, LsqFit, Interpolations
 	using DataFrames, CSV
+	using Optim
 	const ITI = ImageTransformations.Interpolations
 end
 
@@ -37,7 +38,7 @@ end
 include("utils.jl")
 
 # ╔═╡ 03fe33ed-4c31-4c3b-b402-494509eae5c2
-const DATA_DIR = "PhantomData"
+const DATA_DIR = "../PhantomData"
 
 # ╔═╡ f58ba902-0e84-435c-ab41-1ce0c5660830
 # Load data
@@ -177,7 +178,7 @@ md"**Create an interpolation function from the static phantom avarage**"
 phantom_itp = let (r,c,h) = size(staticimgs),
 				  xs = 1:r, ys = 1:c, zs = 1:h
 	extrapolate(
-		scale(interpolate(staticimgs, BSpline(Linear())), xs, ys, zs),
+		scale(interpolate(staticimgs, BSpline(Quadratic())), xs, ys, zs),
 		Line()
 	) 
 end;
@@ -293,7 +294,7 @@ let θ = deg2rad(theta)
 end
 
 # ╔═╡ cb6bec51-f76c-4f18-a023-c31ebce3758e
-md"Transformation Matrices"
+md"## Ellipsoidal Rotation"
 
 # ╔═╡ b8a2fbf0-389c-4c84-9fc0-7b67cebd6eaf
 Rx(α) = [1 0 0; 0 cos(α) -sin(α); 0 sin(α) cos(α)]
@@ -307,13 +308,9 @@ Rz(γ) = [cos(γ) -sin(γ) 0; sin(γ) cos(γ) 0; 0 0 1]
 # ╔═╡ 28441b49-be01-4b92-923f-4df46084a486
 Rx(π/2)*Rz(π/2)*[1, 2, 3]
 
-# ╔═╡ 5000bb8a-5b36-4abb-8701-091cdd1eb950
-[mean(staticEs[3:4,:], dims=2)..., 1] |> normalize
-
-# ╔═╡ 5e5efa2b-ba64-4976-8f85-20de6a5c60c7
-S = [staticEs[4,1]/staticEs[3,1] 0 0; 0 1 0; 0 0 1]
-
 # ╔═╡ 474b12cc-7767-4c78-b429-3788a796a980
+# ╠═╡ disabled = true
+#=╠═╡
 let iidxs = (43, 43, 1), θ = staticEs[5],
 		 origin = [staticEs[:,sliceId][1:2]; 1],
 		 last = [staticEs[:,sliceId][1:2]; sz[3]],
@@ -339,31 +336,85 @@ let iidxs = (43, 43, 1), θ = staticEs[5],
 	@info "Translated back" trinv
 	trinv, inv(S)*Rz(-α)*Rx(θ)*S*t
 end
+  ╠═╡ =#
+
+# ╔═╡ dbcf2825-884a-4770-9bec-e6171a48ffe6
+# transformation matrix
+TM(α, θ, a, b) = let S = [a/b 0 0; 0 1 0; 0 0 1]	
+	# rot to 0 -> scale to circ -> rot to α -> scale to ellps -> rot to θ 
+	Rz(-θ)*S*Rz(α)*inv(S)*Rz(θ)
+end
+
+# ╔═╡ f3924f2b-9586-4222-967b-bf02f04ff715
+
 
 # ╔═╡ 655d3550-631b-49a0-af96-d83d9be96c5f
 md"""
-Generate image from an avarage volume slice `Z` by rotating it at an angle `θ` ∈ [-π,π].
+Generate image from an avarage volume slice `Z` by rotating it at an angle `α` ∈ [-π,π].
 
 Slice (Z): $(@bind sliceId2 html"<input type=number min=1 max=13 value=1></input>")
-Rotation angle (θ): $(@bind theta2 html"<input type=number min=-180 max=180 value=0></input>")
+Rotation angle (α): $(@bind alpha_grad html"<input type=number min=-180 max=180 value=0></input>")
+
+X-axis: $(@bind v html"<input type=number min=1 max=81 value=42>")
+Y-axis: $(@bind h html"<input type=number min=1 max=81 value=42>")
 """
 
+# ╔═╡ 3558b4d0-ef5a-4fa5-81f3-9ab166195a4b
+γ = let origin = [staticEs[:,sliceId2][1:2]; 1],
+	(a, b) = staticEs[3:4,sliceId2]
+	
+	f(γ) = begin
+		coords = map(α->TM(α, γ, a, b)*([h,v,sliceId2].-origin).+origin, 0.0:0.1:π)		
+		sim = map(c->phantom_itp(c...), coords)
+		abs(-(extrema(sim)...))
+	end
+	res = optimize(f, 0.0, float(π))
+	@info res
+	Optim.minimizer(res)
+end
+
+# ╔═╡ 91775ed3-50db-4275-bf5b-3ed5b6fa70b2
+rad2deg(γ)
+
 # ╔═╡ 4fdd9c10-227e-4d03-a93e-b8ec8e3287e9
-let α = deg2rad(theta2)
-	# origin = [mean(centers, dims=2)...; 1] # tatic average ellipse centers
-	origin = [staticEs[:,sliceId2][1:2]; 1]
-	# generate image
-	#T = inv(S)*Rz(α)*S*Rx(θ) # rotate-x-> scale -> rotate-z -> scale-back
-	T = Rz(α)*S #*Rx(θ)
-	coords = [T*([i,j,sliceId2].-origin).+origin for i in 1:sz[1], j in 1:sz[2]]
+let α = deg2rad(alpha_grad),
+	# origin = [mean(centers, dims=2)...; 1], # static average ellipse centers
+	origin = [staticEs[:,sliceId2][1:2]; 1],
+	(a, b) = staticEs[3:4,sliceId2]
+
+	# Coordinate transformation
+	coords = [TM(α, γ, a, b)*([i,j,sliceId2].-origin).+origin for i in 1:sz[1], j in 1:sz[2]]
+	# interpolate intensities
 	sim = map(c->phantom_itp(c...), coords)
+	# generate image
 	gen = Gray.(sim |> genimg)
 	# show averaged image	
 	ave = Gray.(staticimgs[:,:,sliceId2] |> genimg)
 	pave = plot(ave, aspect_ratio=1.0, axis=nothing, framestyle=:none, title="img z=$sliceId2", size=(300,350))
 	# show generated image
-	pgen = plot(gen, aspect_ratio=1.0, axis=nothing, framestyle=:none, title="generated at $theta2")
+	pgen = plot(gen, aspect_ratio=1.0, axis=nothing, framestyle=:none, title="generated at $alpha_grad", legend=:none)
+	hline!(pgen, [h], color=:red)
+	vline!(pgen, [v], color=:green)
 	plot(pave, pgen)	
+end
+
+# ╔═╡ 0011e248-25b1-4897-90a1-1c0fa50240dd
+md"""Initial rotation angle (γ): $(@bind gamma_grad html"<input type=number min=0 max=180 value=0></input>")"""
+
+# ╔═╡ 583476fc-29b8-4994-a14e-aed040c4241e
+let αs = 0:0.1:π,
+	# origin = [mean(centers, dims=2)...; 1], # static average ellipse centers
+	origin = [staticEs[:,sliceId2][1:2]; 1],
+	(a, b) = staticEs[3:4,sliceId2],	
+	γ = deg2rad(gamma_grad)
+	
+	# Coordinate transformation
+	coords = map(α->TM(α, γ, a, b)*([h,v,sliceId2].-origin).+origin, αs)
+	# interpolate intensities
+	sim = map(c->phantom_itp(c...), coords)	
+	# plot
+	@info extrema(sim)
+	plot(αs, sim, legend=:none)	
 end
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
@@ -381,6 +432,7 @@ LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LsqFit = "2fda8390-95c7-5789-9bda-21331edee243"
 Measures = "442fdcdd-2543-5da2-b0f3-8c86c306513e"
 NIfTI = "a3a9e032-41b5-5fc4-967a-a6b7a19844d3"
+Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Rotations = "6038ab10-8711-5258-84ad-4b1120ba62dc"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
@@ -398,6 +450,7 @@ Interpolations = "~0.14.6"
 LsqFit = "~0.13.0"
 Measures = "~0.3.2"
 NIfTI = "~0.5.8"
+Optim = "~1.7.4"
 Plots = "~1.36.6"
 Rotations = "~1.3.3"
 StatsPlots = "~0.15.4"
@@ -409,7 +462,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.8.1"
 manifest_format = "2.0"
-project_hash = "4f828171a90997b2e2f44923079647aeba6927de"
+project_hash = "bbe0b783d6428dea0e8d25c7f9596ddb8abc6389"
 
 [[deps.AbstractFFTs]]
 deps = ["ChainRulesCore", "LinearAlgebra"]
@@ -492,7 +545,7 @@ uuid = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 version = "0.10.8"
 
 [[deps.Cairo_jll]]
-deps = ["Artifacts", "Bzip2_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Pkg", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
+deps = ["Artifacts", "Bzip2_jll", "CompilerSupportLibraries_jll", "Fontconfig_jll", "FreeType2_jll", "Glib_jll", "JLLWrappers", "LZO_jll", "Libdl", "Pixman_jll", "Pkg", "Xorg_libXext_jll", "Xorg_libXrender_jll", "Zlib_jll", "libpng_jll"]
 git-tree-sha1 = "4b859a208b2397a7a623a03449e4636bdb17bcf2"
 uuid = "83423d85-b0ee-5818-9007-b63ccbeb887a"
 version = "1.16.1+1"
@@ -1200,6 +1253,12 @@ git-tree-sha1 = "7f3efec06033682db852f8b3bc3c1d2b0a0ab066"
 uuid = "38a345b3-de98-5d2b-a5d3-14cd9215e700"
 version = "2.36.0+0"
 
+[[deps.LineSearches]]
+deps = ["LinearAlgebra", "NLSolversBase", "NaNMath", "Parameters", "Printf"]
+git-tree-sha1 = "7bbea35cec17305fc70a0e5b4641477dc0789d9d"
+uuid = "d3d80556-e9d4-5f37-9878-2ab0fcc64255"
+version = "7.2.0"
+
 [[deps.LinearAlgebra]]
 deps = ["Libdl", "libblastrampoline_jll"]
 uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -1385,6 +1444,12 @@ git-tree-sha1 = "13652491f6856acfd2db29360e1bbcd4565d04f1"
 uuid = "efe28fd5-8261-553b-a9e1-b2916fc3738e"
 version = "0.5.5+0"
 
+[[deps.Optim]]
+deps = ["Compat", "FillArrays", "ForwardDiff", "LineSearches", "LinearAlgebra", "NLSolversBase", "NaNMath", "Parameters", "PositiveFactorizations", "Printf", "SparseArrays", "StatsBase"]
+git-tree-sha1 = "1903afc76b7d01719d9c30d3c7d501b61db96721"
+uuid = "429524aa-4258-5aef-a3af-852621145aeb"
+version = "1.7.4"
+
 [[deps.OptimBase]]
 deps = ["NLSolversBase", "Printf", "Reexport"]
 git-tree-sha1 = "9cb1fee807b599b5f803809e85c81b582d2009d6"
@@ -1482,6 +1547,12 @@ deps = ["DataAPI", "Future"]
 git-tree-sha1 = "a6062fe4063cdafe78f4a0a81cfffb89721b30e7"
 uuid = "2dfb63ee-cc39-5dd5-95bd-886bf059d720"
 version = "1.4.2"
+
+[[deps.PositiveFactorizations]]
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "17275485f373e6673f7e7f97051f703ed5b15b20"
+uuid = "85a6dd25-e78a-55b7-8502-1745935b8125"
+version = "0.2.4"
 
 [[deps.Preferences]]
 deps = ["TOML"]
@@ -2129,10 +2200,14 @@ version = "1.4.1+0"
 # ╠═d7544ee9-8984-487e-a9d6-b584d9a59eb0
 # ╠═9f68bfdf-a7a5-4be0-8a58-0e64368e9d47
 # ╠═28441b49-be01-4b92-923f-4df46084a486
-# ╠═5000bb8a-5b36-4abb-8701-091cdd1eb950
-# ╠═5e5efa2b-ba64-4976-8f85-20de6a5c60c7
 # ╟─474b12cc-7767-4c78-b429-3788a796a980
+# ╠═dbcf2825-884a-4770-9bec-e6171a48ffe6
+# ╠═f3924f2b-9586-4222-967b-bf02f04ff715
 # ╟─655d3550-631b-49a0-af96-d83d9be96c5f
+# ╟─3558b4d0-ef5a-4fa5-81f3-9ab166195a4b
+# ╠═91775ed3-50db-4275-bf5b-3ed5b6fa70b2
 # ╟─4fdd9c10-227e-4d03-a93e-b8ec8e3287e9
+# ╟─0011e248-25b1-4897-90a1-1c0fa50240dd
+# ╟─583476fc-29b8-4994-a14e-aed040c4241e
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
