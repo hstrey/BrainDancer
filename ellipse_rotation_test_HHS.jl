@@ -78,32 +78,23 @@ cartn = cart .+ noise
 heatmap(xs, ys, cartn, aspect_ratio=1)
 
 # ╔═╡ 0d8156cd-df75-43fc-8275-89e3d6b45e51
-cart_itp = let (r,c) = size(cartn),
-				  xs = , ys = 1:c
+cart_itp =
 	extrapolate(
-		scale(interpolate(staticimgs, BSpline(Linear())), xs, ys, zs),
+		Interpolations.scale(interpolate(cartn, BSpline(Linear())), xs, ys),
 		Line()
-	) 
-end;
+	)
 
 # ╔═╡ 1952e174-38bb-4b09-b77c-dd6acc0310c1
 coords = [(x,y) for x in xs for y in ys if (x^2+y^2 < 5^2)]
 
 # ╔═╡ 3be7ebf4-8871-4f01-b352-fbde7579ecda
 begin
-	cart_inner = cartn
+	cart_inner = copy(cartn)
 	for pixel in coords
 		cart_inner[round(Int,pixel[1]+10.5),round(Int,pixel[2]+10.5)] = 1
 	end
 	heatmap(xs, ys, cart_inner, aspect_ratio=1)
 end
-
-# ╔═╡ a8f6e698-7286-4024-b91d-b03eeda05df0
-cart_itp = 
-	extrapolate(
-		Interpolations.scale(interpolate(cartn, BSpline(Linear())), xs, ys),
-		Line()
-	) 
 
 # ╔═╡ eab1527e-e9e0-4364-8ad7-3091726b972a
 md"Ellipse parameters"
@@ -224,7 +215,7 @@ PLUTO_MANIFEST_TOML_CONTENTS = """
 
 julia_version = "1.8.5"
 manifest_format = "2.0"
-project_hash = "05ad2746a4b4d405a14e867161d599b00de4115f"
+project_hash = "2f5953bf2d7c213cdf583ef1ce7b2cf53f77a554"
 
 [[deps.AbstractFFTs]]
 deps = ["ChainRulesCore", "LinearAlgebra"]
@@ -1907,7 +1898,6 @@ version = "1.4.1+0"
 # ╠═0d8156cd-df75-43fc-8275-89e3d6b45e51
 # ╠═1952e174-38bb-4b09-b77c-dd6acc0310c1
 # ╠═3be7ebf4-8871-4f01-b352-fbde7579ecda
-# ╠═a8f6e698-7286-4024-b91d-b03eeda05df0
 # ╟─eab1527e-e9e0-4364-8ad7-3091726b972a
 # ╠═8923d04f-ffa5-4f5b-8917-e42be8dc8370
 # ╟─2b3b5788-823d-4da4-b710-7143354cc3c2
