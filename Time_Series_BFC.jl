@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.15
+# v0.19.22
 
 using Markdown
 using InteractiveUtils
@@ -35,7 +35,7 @@ begin
 end
 
 # ╔═╡ 6704f270-9d91-4d63-bf53-16e29c246605
-phantom = niread("PhantomData/epi/epi.nii")
+phantom = niread("../PhantomData/UConn phantom data/104/104.nii")
 
 # ╔═╡ 8f178d20-c6c2-4e55-8bf4-9cb016b785ee
 size(phantom)
@@ -57,14 +57,14 @@ plot(Gray.(phantom[:,:,10,400] ./ findmax(phantom[:,:,10,400])[1]) ,aspect_ratio
 # ╔═╡ b52d0c52-164a-4c75-a138-923d02869023
 md"""
 Please provide the range for good slices
-$(@bind s html"<input type=range min=1 max=28 value=1>")
-$(@bind e html"<input type=range min=1 max=28 value=28>")
+$(@bind s html"<input type=range min=1 max=60 value=1>")
+$(@bind e html"<input type=range min=1 max=60 value=60>")
 """
 
 # ╔═╡ 5d9b4de4-7207-4f63-a8a3-b85f7823d736
 begin
 	images = []
-	for i in 1:28
+	for i in 26:47
 		img = phantom[:,:,i,1]
 		imgmax = findmax(img)[1]
 		if (i>=s) && (i<=e)
@@ -91,13 +91,13 @@ begin
 end
 
 # ╔═╡ 43130725-c005-4d5f-b86e-c374f58311f4
-aqui = CSV.read("PhantomData/Acqtimes.csv",DataFrame)
+aqui = CSV.read("../PhantomData/UConn phantom data/104/acq_times_104.csv",DataFrame)
 
 # ╔═╡ 8549980d-f4d6-4be4-9ed5-ef4fc27481e8
-p_log = CSV.read("PhantomData/epi/log.csv",DataFrame)
+p_log = CSV.read("../PhantomData/UConn phantom data/104/log104.csv",DataFrame)
 
 # ╔═╡ a06ee4f8-31bb-4b7a-8c04-e4cf65ca53cc
-max_motion = findmax(p_log[!,"tMotionTime"])[1]
+max_motion = findmax(p_log[!,"Tmot"])[1]
 
 # ╔═╡ 05ceb6d2-d3e0-4c3d-96bb-c38bb47dac0c
 slices_without_motion = aqui[!,"Slice"][aqui[!,"Time"] .> max_motion]
@@ -115,7 +115,7 @@ slices_wm = [x in slices_ok ? 1 : 0 for x in slices_selected]
 slices_df = DataFrame(Dict(:slice => slices_selected, :no_motion => slices_wm))
 
 # ╔═╡ 200bf9f2-59d1-4503-90b3-8514198db6f6
-CSV.write("PhantomData/slices.csv",slices_df)
+CSV.write("../PhantomData/UConn phantom data/104/slices.csv",slices_df)
 
 # ╔═╡ 1fce80c1-e747-4d19-997c-31400e8a864c
 # average over the first 200 static slices
@@ -259,14 +259,14 @@ ni_whole = NIVolume(phantom_slices, Good_slices)
 # ╔═╡ d25ff77c-3b2d-4f0a-a798-83f12643e142
 # write out the static phantom and its mask
 begin
-	niwrite("mask.nii",ni_mask)
-	niwrite("static.nii",ni_static)
-	niwrite("Good_slices.nii",ni_whole)
+	niwrite("../PhantomData/UConn phantom data/104/mask.nii",ni_mask)
+	niwrite("../PhantomData/UConn phantom data/104/static.nii",ni_static)
+	niwrite("../PhantomData/UConn phantom data/104/Good_slices.nii",ni_whole)
 end
 
 # ╔═╡ 87b6f9b0-7a4f-4e0c-99ce-1f5adb65ce60
 # no verbose; if want verbose, -v
-ANTscommand = `N4BiasFieldCorrection -s 1 -d 3 -b \[ 300,3 \] -i static.nii -x mask.nii -o \[ BFC_static300.nii, BFC_bias300.nii \]`
+ANTscommand = `N4BiasFieldCorrection -s 1 -d 3 -b \[ 200,3 \] -i "../PhantomData/UConn phantom data/104/static.nii" -x ../PhantomData/UConn phantom data/104/mask.nii -o \[ ../PhantomData/UConn phantom data/104/BFC_static200.nii, ../PhantomData/UConn phantom data/104/BFC_bias200.nii \]`
 
 # ╔═╡ 296d707f-a65c-4e21-becb-f6dc06e2b3e8
 typeof(ANTscommand)
@@ -278,10 +278,10 @@ run(ANTscommand)
   ╠═╡ =#
 
 # ╔═╡ 6acaf6cc-c43c-4ba6-97f1-7842129a3d38
-bias = niread("PhantomData/BFC_bias200.nii")
+bias = niread("../PhantomData/UConn phantom data/104/BFC_bias200.nii")
 
 # ╔═╡ 7e895010-048d-4fde-ad9c-684b979319a4
-Corrected = niread("PhantomData/BFC_static200.nii")
+Corrected = niread("../PhantomData/UConn phantom data/104/BFC_static200.nii")
 
 # ╔═╡ f66b5dd2-5b16-425d-830d-7006bdac3bde
 begin
@@ -326,16 +326,10 @@ begin
 end
 
 # ╔═╡ b5c2f9bb-f487-4a92-904d-a8714eb0da04
-# ╠═╡ disabled = true
-#=╠═╡
 BFC_NIfTI = NIVolume(phantom_slices, BFC_image)
-  ╠═╡ =#
 
 # ╔═╡ 501049c5-239b-4b16-bd1b-406d5ed96ab2
-# ╠═╡ disabled = true
-#=╠═╡
-niwrite("BFC_time_series.nii",BFC_NIfTI)
-  ╠═╡ =#
+niwrite("../PhantomData/UConn phantom data/104/BFC_time_series.nii",BFC_NIfTI)
 
 # ╔═╡ Cell order:
 # ╠═5b8d1c62-fc8f-11ec-202f-5f63a94bc6bf
